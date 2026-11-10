@@ -68,58 +68,115 @@
   }).observe(hero);
 
   raf = requestAnimationFrame(tick);
+})();
 
-  /* ── Управление модальным окном сообщений ────────────────── */
-  const btnMail = document.getElementById('btnMail');
+/* ── Курсор-блик ─────────────────────────────────────────── */
+(() => {
+  const flare = document.getElementById('flare');
+  const hero = document.getElementById('hero');
+  if (!flare || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  let x = 0, y = 0, queued = false;
+  const draw = () => {
+    queued = false;
+    flare.style.translate = `${x}px ${y}px`;   // translate идёт до scale, так увеличение не сдвигает блик
+  };
+  hero.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const r = hero.getBoundingClientRect();
+    x = e.clientX - r.left; y = e.clientY - r.top;
+    flare.classList.add('is-follow');
+    flare.classList.remove('is-away');
+    flare.classList.toggle('is-hot', !!e.target.closest('a, button'));
+    if (!queued) { queued = true; requestAnimationFrame(draw); }
+  }, { passive: true });
+  hero.addEventListener('pointerleave', () => flare.classList.add('is-away'));
+})();
+
+/* ── Входящие сообщения (меню в стиле старого шутера) ───── */
+(() => {
   const mailModal = document.getElementById('mailModal');
-  const mailClose = document.getElementById('mailClose');
-  const mailBackdrop = document.getElementById('mailBackdrop');
+  if (!mailModal) return;
   const badgePulse = document.querySelector('.hud__badge-pulse');
+  const items = [...mailModal.querySelectorAll('.mail-menu__item')];
+  const cards = [...mailModal.querySelectorAll('.mail-card')];
+  let active = 0;
+  let lastFocus = null;
 
-  function playMailChime() {
+  /* звуки меню: один AudioContext на всю страницу */
+  let ctx = null;
+  function beep(f1, f2, dur, vol, type = 'square') {
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      const ctx = new AC();
-      const now = ctx.currentTime;
+      ctx = ctx || new AC();
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
       const o = ctx.createOscillator();
       const g = ctx.createGain();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(587.33, now);
-      o.frequency.exponentialRampToValueAtTime(880, now + 0.12);
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start(now);
-      o.stop(now + 0.4);
+      o.type = type;
+      o.frequency.setValueAtTime(f1, t);
+      o.frequency.exponentialRampToValueAtTime(f2, t + dur * .6);
+      g.gain.setValueAtTime(.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + .01);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(ctx.destination);
+      o.start(t);
+      o.stop(t + dur + .02);
     } catch (_) {}
   }
+  const chime = () => beep(587.33, 880, .38, .2, 'sine');
+  const tick  = () => beep(1400, 1100, .05, .05);
 
-  function openMail() {
-    if (!mailModal) return;
+  function select(i, sound = true) {
+    i = (i + items.length) % items.length;
+    if (i === active && cards[i] && !cards[i].hidden) return;
+    active = i;
+    items.forEach((el, k) => {
+      el.classList.toggle('is-active', k === i);
+      el.setAttribute('aria-selected', k === i ? 'true' : 'false');
+    });
+    cards.forEach((el, k) => {
+      el.hidden = k !== i;
+      el.classList.toggle('is-active', k === i);
+    });
+    if (sound) tick();
+  }
+
+  function openMail(i = 0) {
+    lastFocus = document.activeElement;
+    select(i, false);
     mailModal.classList.add('is-open');
     mailModal.setAttribute('aria-hidden', 'false');
     if (badgePulse) badgePulse.style.display = 'none';
-    playMailChime();
+    chime();
+    items[active].focus({ preventScroll: true });
   }
 
   function closeMail() {
-    if (!mailModal) return;
     mailModal.classList.remove('is-open');
     mailModal.setAttribute('aria-hidden', 'true');
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
   }
 
-  if (btnMail) btnMail.addEventListener('click', openMail);
-  const btnRules = document.getElementById('btnRules');   // «Правила» открывают те же письма с планом игры
-  if (btnRules) btnRules.addEventListener('click', openMail);
-  if (mailClose) mailClose.addEventListener('click', closeMail);
-  if (mailBackdrop) mailBackdrop.addEventListener('click', closeMail);
+  items.forEach((el, k) => {
+    el.addEventListener('click', () => select(k));
+    el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') select(k); });
+  });
+
+  const btnMail = document.getElementById('btnMail');
+  const btnRules = document.getElementById('btnRules');   // «Правила» сразу открывают письмо с планом игры
+  if (btnMail) btnMail.addEventListener('click', () => openMail(0));
+  if (btnRules) btnRules.addEventListener('click', () => openMail(1));
+  document.getElementById('mailClose').addEventListener('click', closeMail);
+  document.getElementById('mailBackdrop').addEventListener('click', closeMail);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && mailModal && mailModal.classList.contains('is-open')) {
-      closeMail();
+    if (!mailModal.classList.contains('is-open')) return;
+    if (e.key === 'Escape') { closeMail(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      select(active + (e.key === 'ArrowDown' ? 1 : -1));
+      items[active].focus({ preventScroll: true });
     }
   });
 })();

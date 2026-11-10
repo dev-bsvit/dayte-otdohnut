@@ -90,7 +90,7 @@ img { display: block; max-width: none; }
 }
 .bg img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; }
 
-.zombie { z-index: 1; --x: 225;    --b: 43.73; --w: 500.362; --h: 279.272; --dx: 26; --dy: 12; }
+.zombie { z-index: 1; --x: 217;    --b: -53.27; --w: 500.362; --h: 279.272; --dx: 26; --dy: 12; }
 .shadow { z-index: 2; --x: 580.97; --b: -78;   --w: 652.306; --h: 115.448; --dx: 34; --dy: 14; }
 .char   { z-index: 3; --x: 661.13; --b: -41.77; --w: 812.147; --h: 612.769; --dx: 34; --dy: 14; }
 /* передний план прижат к правому нижнему углу экрана;
@@ -197,8 +197,30 @@ img { display: block; max-width: none; }
 
 /* HUD */
 .hud--top    { --x: 1126; --y: 25; --w: 130.865; height: calc(42 * var(--u)); }
-.hud--bottom { --x: 25;   --b: 44; --w: 130.865; height: calc(92 * var(--u)); }
-.hud--bottom .in { display: flex; flex-direction: column; gap: calc(8 * var(--u)); }
+.hud--bottom { --x: 25;   --b: 21; --w: 284; height: calc(42 * var(--u)); }
+.hud--bottom .in { display: flex; gap: calc(23.14 * var(--u)); }
+
+/* курсор-блик: картинка из макета ходит за мышью, системный курсор скрыт */
+.flare {
+  position: absolute;
+  z-index: 8;
+  left: calc(var(--x0) + 458 * var(--u));   /* до первого движения мыши — место из макета */
+  top: calc(342 * var(--u));
+  width: calc(364 * var(--u));
+  height: calc(182 * var(--u));
+  pointer-events: none;
+  transition: scale .2s ease, opacity .25s ease;
+}
+.flare img { width: 100%; height: 100%; }
+.flare.is-follow { left: 0; top: 0; margin: calc(-91 * var(--u)) 0 0 calc(-182 * var(--u)); }  /* центр блика = кончик курсора */
+.flare.is-hot { scale: 1.35; }
+.flare.is-away { opacity: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .hero, .hero * { cursor: none !important; }
+}
+@media not ((hover: hover) and (pointer: fine)) {
+  .flare { display: none; }
+}
 
 .hud__row {
   display: flex;
@@ -307,8 +329,8 @@ img { display: block; max-width: none; }
 
   /* кнопки прибиты к низу экрана, над HUD */
   .p.t.start-wrap { --x: 20; --w: 370; top: auto; bottom: calc(103 * var(--u)); }
-  .hud--bottom { --x: 17; --b: 24; --w: 305.865; height: calc(42 * var(--u)); }
-  .hud--bottom .in { flex-direction: row; gap: calc(27.14 * var(--u)); }
+  .hud--bottom { --x: 17; --b: 24; --w: 305.865; }
+  .hud--bottom .in { gap: calc(27.14 * var(--u)); }
   .hud__row--heart { order: -1; }
 }
 
@@ -360,9 +382,10 @@ img { display: block; max-width: none; }
   .layer { transform: none !important; }
 }
 
-/* ── Модальное окно писем ─────────────────────────────────── */
+/* ── Входящие: меню шутера 2000-х ─────────────────────────── */
 
 .mail-modal {
+  --glow: 0 0 6px rgba(255, 184, 61, .75), 0 0 18px rgba(255, 140, 0, .35);
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -374,163 +397,209 @@ img { display: block; max-width: none; }
   pointer-events: none;
   transition: opacity .25s ease;
 }
-.mail-modal.is-open {
-  opacity: 1;
-  pointer-events: auto;
-}
+.mail-modal.is-open { opacity: 1; pointer-events: auto; }
 .mail-modal__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(20, 14, 6, .78);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background:
+    radial-gradient(ellipse at center, rgba(40, 22, 4, .55), rgba(6, 4, 2, .92) 70%);
 }
+
+/* рамка «под металл»: светлый скос сверху, тёмный снизу, заклёпки по углам */
 .mail-modal__panel {
   position: relative;
-  width: min(600px, 100%);
-  max-height: min(88vh, 760px);
+  width: min(820px, 100%);
+  max-height: min(90vh, 620px);
   display: flex;
   flex-direction: column;
-  background: rgba(20, 18, 21, .95);
-  border: 1px solid var(--hud-border);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, .7), 0 0 30px rgba(255, 184, 61, .15);
-  transform: translateY(16px) scale(.98);
-  transition: transform .25s cubic-bezier(.2, .8, .2, 1);
-  overflow: hidden;
+  padding: 6px;
+  background: linear-gradient(180deg, #8a8477 0%, #3b3833 18%, #1c1b19 50%, #3b3833 82%, #6f6a60 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, .45),
+    inset -1px -1px 0 rgba(0, 0, 0, .8),
+    0 0 0 1px #000,
+    0 24px 60px rgba(0, 0, 0, .8),
+    0 0 40px rgba(255, 140, 0, .18);
+  transform: scale(.94);
+  transition: transform .3s cubic-bezier(.2, .9, .2, 1.2);
 }
-.mail-modal.is-open .mail-modal__panel {
-  transform: translateY(0) scale(1);
+.mail-modal.is-open .mail-modal__panel { transform: scale(1); }
+.mail-modal__panel::before,
+.mail-modal__panel::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #e8e2d2, #6b655a 55%, #1a1917);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  z-index: 2;
+}
+.mail-modal__panel::before { left: 8px; }
+.mail-modal__panel::after  { right: 8px; }
+
+/* внутреннее «стекло» со строками развёртки */
+.mail-modal__header,
+.mail-modal__body,
+.mail-modal__footer {
+  position: relative;
+  background-color: #0c0b0a;
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 3px);
 }
 .mail-modal__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
-  background: #141215;
-  border-bottom: 1px solid var(--hud-border);
-  flex-shrink: 0;
-}
-.mail-modal__title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.mail-modal__icon {
-  width: 28px;
-  height: 25px;
-  display: flex;
-  align-items: center;
   justify-content: center;
-}
-.mail-modal__icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  gap: 16px;
+  padding: 20px 64px 14px;
+  border: 1px solid #000;
+  border-bottom: 0;
 }
 .mail-modal__title {
-  margin: 0;
-  font-family: var(--font-game);
-  font-size: 20px;
-  color: var(--hud-text);
-  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--hud-text);
+  text-shadow: var(--glow);
+  white-space: nowrap;
+}
+/* двойные линии по бокам заголовка: ═══ ВХОДЯЩИЕ ═══ */
+.mail-modal__title::before,
+.mail-modal__title::after {
+  content: "";
+  flex: 1;
+  height: 6px;
+  border-top: 2px solid rgba(255, 184, 61, .7);
+  border-bottom: 2px solid rgba(255, 184, 61, .7);
+  box-shadow: 0 0 8px rgba(255, 140, 0, .35);
 }
 .mail-modal__count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 8px;
-  background: #ff3d2e;
-  color: #fff;
-  font-size: 13px;
-  border-radius: 10px;
-  line-height: 1;
+  font-size: .55em;
+  padding: 3px 7px 2px;
+  border: 1px solid currentColor;
+  letter-spacing: 0;
 }
 .mail-modal__close {
-  background: transparent;
-  border: 1px solid var(--hud-border);
-  color: rgba(255, 255, 255, .7);
-  width: 36px;
-  height: 36px;
-  font-size: 24px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  translate: 0 -40%;
+  padding: 4px 6px;
+  background: none;
+  border: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(255, 184, 61, .6);
   cursor: pointer;
-  transition: all .18s ease;
-  font-family: Arial, sans-serif;
+  transition: color .15s, text-shadow .15s;
 }
-.mail-modal__close:hover {
-  border-color: var(--hud-text);
-  color: #fff;
-  background: rgba(255, 184, 61, .15);
-}
+.mail-modal__close:hover,
+.mail-modal__close:focus-visible { color: #ffe2a8; text-shadow: var(--glow); outline: none; }
+
 .mail-modal__body {
-  padding: 20px 22px;
-  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(200px, 38%) 1fr;
+  min-height: 0;
+  flex: 1;
+  border-inline: 1px solid #000;
+}
+
+/* список писем — пункты меню */
+.mail-menu {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 4px;
+  padding: 18px 10px 18px 14px;
+  border-right: 1px solid rgba(255, 184, 61, .22);
+}
+.mail-menu__item {
+  display: grid;
+  grid-template-columns: 18px 1fr 8px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 8px;
+  background: none;
+  border: 0;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  color: rgba(255, 184, 61, .5);
+  cursor: pointer;
+  transition: color .12s, background-color .12s, text-shadow .12s;
+}
+.mail-menu__mark { font-size: 12px; opacity: 0; transition: opacity .12s, translate .12s; translate: -4px 0; }
+.mail-menu__item:hover,
+.mail-menu__item:focus-visible { color: #ffd389; outline: none; }
+.mail-menu__item.is-active {
+  color: #ffe9bf;
+  text-shadow: var(--glow);
+  background: linear-gradient(90deg, rgba(255, 140, 0, .22), transparent);
+}
+.mail-menu__item.is-active .mail-menu__mark { opacity: 1; translate: 0 0; animation: mark-blink 1s steps(2, start) infinite; }
+@keyframes mark-blink { to { visibility: hidden; } }
+.mail-menu__dot { width: 8px; height: 8px; background: var(--hud-text); box-shadow: 0 0 6px var(--hud-text); }
+.mail-menu__dot--red   { background: #ff3d2e; box-shadow: 0 0 6px #ff3d2e; }
+.mail-menu__dot--green { background: var(--green-text); box-shadow: 0 0 6px var(--green-text); }
+
+/* текст выбранного письма */
+.mail-view {
+  padding: 20px 24px 22px;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgba(255, 184, 61, .5) transparent;
 }
-.mail-card {
-  padding: 16px 18px;
-  background: rgba(36, 23, 9, .5);
-  border: 1px solid var(--hud-border);
-  border-left: 4px solid var(--hud-text);
-  transition: transform .18s ease, border-color .18s ease;
-}
-.mail-card:hover {
-  border-color: var(--hud-text);
-  transform: translateX(2px);
-}
-.mail-card--urgent {
-  border-left-color: #ff3d2e;
-  background: rgba(255, 61, 46, .08);
-}
-.mail-card--reward {
-  border-left-color: var(--green-text);
-  background: rgba(45, 189, 0, .08);
-}
+.mail-card { animation: card-in .25s ease both; }
+.mail-card[hidden] { display: none; }
+@keyframes card-in { from { opacity: 0; transform: translateX(10px); } }
 .mail-card__meta {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, .6);
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(255, 184, 61, .25);
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: rgba(255, 184, 61, .6);
 }
-.mail-card__sender {
-  font-weight: 600;
-  color: #fff;
-}
-.mail-card__time {
-  font-size: 11px;
-}
+.mail-card__sender::before { content: "От: "; color: rgba(255, 184, 61, .4); }
 .mail-card__subject {
-  margin: 0 0 8px;
-  font-family: var(--font-game);
-  font-size: 17px;
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.02;
+  text-transform: uppercase;
   color: var(--hud-text);
-  line-height: 1.25;
+  text-shadow: var(--glow);
 }
-.mail-card--urgent .mail-card__subject {
-  color: #ffaa99;
-}
-.mail-card--reward .mail-card__subject {
-  color: #a3ff88;
-}
+.mail-card--urgent .mail-card__subject { color: #ff8a6e; text-shadow: 0 0 6px rgba(255, 61, 46, .7), 0 0 18px rgba(255, 61, 46, .3); }
+.mail-card--reward .mail-card__subject { color: #9dff7a; text-shadow: 0 0 6px rgba(45, 189, 0, .7), 0 0 18px rgba(45, 189, 0, .3); }
 .mail-card__text {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, .88);
+  font-family: var(--font-game);
+  font-size: 15px;
+  line-height: 1.5;
+  color: #e9dcc4;
 }
+.mail-card__text strong { color: var(--hud-text); font-weight: 600; }
 .mail-card__tiers {
-  margin: 10px 0;
+  margin: 14px 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -540,34 +609,58 @@ img { display: block; max-width: none; }
 .mail-card__tiers li {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 7px 12px;
-  background: #141215;
-  border: 1px solid rgba(255, 255, 255, .1);
-  font-size: 13px;
+  gap: 10px;
+  padding: 8px 12px 7px;
+  background: var(--hud-bg);
+  border: 1.26px solid var(--hud-border);
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-transform: uppercase;
+  color: #e9dcc4;
 }
-.mail-card__tiers li strong {
-  color: var(--green-text);
-  font-family: var(--font-game);
-}
-.mail-card__subtext {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, .75);
-  font-style: italic;
-}
+.mail-card__tiers li strong { font-weight: 400; color: #9dff7a; text-shadow: 0 0 6px rgba(45, 189, 0, .6); white-space: nowrap; }
+.mail-card__subtext { margin: 10px 0 0; font-family: var(--font-game); font-size: 13px; color: rgba(233, 220, 196, .7); }
+
 .mail-modal__footer {
-  padding: 16px 22px;
-  background: #141215;
-  border-top: 1px solid var(--hud-border);
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-shrink: 0;
+  justify-content: center;
+  padding: 14px 16px 18px;
+  border: 1px solid #000;
+  border-top: 2px solid rgba(255, 184, 61, .35);
 }
 .mail-modal__action {
-  padding: 14px 28px;
-  font-size: 22px;
-  border-width: 2px;
-  border-radius: 50px;
+  padding: 6px 14px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--hud-text);
+  text-shadow: var(--glow);
+  transition: color .15s, scale .15s;
+}
+.mail-modal__action span { display: inline-block; transition: translate .2s; }
+.mail-modal__action:hover,
+.mail-modal__action:focus-visible { color: #fff3d6; outline: none; scale: 1.06; }
+.mail-modal__action:hover span:first-child { translate: -6px 0; }
+.mail-modal__action:hover span:last-child  { translate: 6px 0; }
+
+@media (max-width: 640px) {
+  .mail-modal { padding: 10px; }
+  .mail-modal__panel { max-height: 92svh; padding: 4px; }
+  .mail-modal__panel::before, .mail-modal__panel::after { display: none; }
+  .mail-modal__header { padding: 16px 70px 12px 14px; }
+  .mail-modal__title { font-size: 26px; gap: 10px; }
+  .mail-modal__title::after { display: none; }
+  .mail-modal__esc { display: none; }
+  .mail-modal__close { font-size: 26px; }
+  .mail-modal__body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .mail-menu { padding: 10px 8px; border-right: 0; border-bottom: 1px solid rgba(255, 184, 61, .22); gap: 0; }
+  .mail-menu__item { font-size: 16px; padding: 8px 6px; }
+  .mail-view { padding: 14px 14px 16px; }
+  .mail-card__subject { font-size: 22px; }
+  .mail-card__text { font-size: 14px; }
+  .mail-card__tiers li { font-size: 13px; }
+  .mail-modal__action { font-size: 23px; }
 }
