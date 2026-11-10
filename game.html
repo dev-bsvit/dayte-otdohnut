@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Дайте мне нормально отдохнуть — игра</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="game/game.css?v=7">
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="hurt" id="hurt"></div>
+
+<!-- прицел -->
+<div class="crosshair" id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+
+<!-- HUD -->
+<div class="hud" id="hud">
+  <div class="hud-tl">
+    <div class="cell cell--label">Волна</div>
+    <div class="cell cell--val" id="wave" data-short="волна">1</div>
+    <div class="cell cell--label">Сборы</div>
+    <div class="cell cell--val" id="trip" data-short="сборы">0/18</div>
+  </div>
+
+  <button class="pause-btn" id="btnPause" type="button" aria-label="Пауза">
+    <span class="pause-btn__ico">II</span><span class="pause-btn__key">Esc</span>
+  </button>
+
+  <div class="hud-tr" title="Осталось проблем">
+    <div class="cell cell--ico"><img src="assets/mail.png" alt=""></div>
+    <div class="cell cell--val" id="left">0</div>
+  </div>
+
+  <div class="hud-bl">
+    <div class="row">
+      <div class="cell cell--ico"><img class="ico-coin" src="assets/coin.png" alt=""></div>
+      <div class="cell cell--val" id="score">0</div>
+    </div>
+    <div class="row">
+      <div class="cell cell--ico"><img class="ico-heart" src="assets/heart.png" alt=""></div>
+      <div class="cell cell--val" id="hp">100</div>
+    </div>
+  </div>
+
+  <div class="hud-br">
+    <div class="cell cell--label" id="wname">Чемодан</div>
+    <div class="cell cell--val cell--ammo" id="ammo">40</div>
+  </div>
+</div>
+
+<div class="banner" id="banner"><b></b><span></span></div>
+
+<!-- курортные приколы: листовки, обезьянка, списание монет -->
+<div class="ads" id="ads"></div>
+<img class="monkey" id="monkey" src="assets/monkey.webp" alt="">
+<div class="money-floats" id="money"></div>
+
+<!-- реплика героя при подборе вещи -->
+<div class="speech" id="speech"><img src="assets/hero-face.png" alt=""><p></p></div>
+
+<!-- тач-управление -->
+<div class="touch" id="touch">
+  <div class="stick" id="stick"><i id="knob"></i></div>
+  <button class="tbtn tbtn--fire" id="tFire" type="button">Огонь</button>
+  <button class="tbtn tbtn--jump" id="tJump" type="button" aria-label="Прыжок">⤒</button>
+  <button class="tbtn tbtn--swap" id="tSwap" type="button" aria-label="Сменить оружие">⇄</button>
+  <button class="tbtn tbtn--pause" id="tPause" type="button" aria-label="Пауза">II</button>
+</div>
+
+<!-- экраны -->
+<section class="screen is-open" id="menu">
+  <div class="panel">
+    <img class="panel__title" src="assets/title-d.svg" alt="Дайте мне нормально отдохнуть">
+    <p class="panel__text">Лебеди из покрышек и безголовые с бомбами бегут к вам ордой. Держитесь как можно дольше — чем больше очков, тем ближе отпуск.</p>
+    <ul class="keys keys--desktop">
+      <li><kbd>W A S D</kbd> бег</li>
+      <li><kbd>Shift</kbd> быстрее</li>
+      <li><kbd>Пробел</kbd> прыжок</li>
+      <li><kbd>Мышь</kbd> прицел и огонь</li>
+      <li><kbd>1</kbd> <kbd>2</kbd> / колесо — оружие</li>
+      <li><kbd>Esc</kbd> <kbd>P</kbd> пауза</li>
+    </ul>
+    <ul class="keys keys--touch">
+      <li>Левая половина экрана — бег</li>
+      <li>Правая — поворот камеры</li>
+      <li>Кнопка «Огонь» — стрелять</li>
+    </ul>
+    <button class="btn" id="btnStart" type="button" disabled>Загрузка…</button>
+    <a class="link" href="index.html">← На главную</a>
+  </div>
+</section>
+
+<section class="screen" id="pause">
+  <div class="panel panel--small">
+    <h2 class="panel__h">Пауза</h2>
+    <p class="panel__text">Лебеди ждут. Бюрократия — тоже.</p>
+    <button class="btn" id="btnResume" type="button">Продолжить</button>
+    <a class="link" href="index.html">← На главную</a>
+  </div>
+</section>
+
+<section class="screen" id="over">
+  <div class="panel panel--small">
+    <h2 class="panel__h">Отпуск отменяется</h2>
+    <p class="panel__text" id="overText"></p>
+    <button class="btn" id="btnRestart" type="button">Ещё раз</button>
+    <a class="link" href="index.html">← На главную</a>
+  </div>
+</section>
+
+<section class="screen" id="win">
+  <div class="panel panel--win">
+    <h2 class="panel__h panel__h--win">🎉 Отпуск заслужен!</h2>
+    <p class="panel__text" id="winText"></p>
+
+    <div class="win-promo" id="winPromo">
+      <div class="win-promo__head">
+        <span class="win-promo__tag">Спецпроект Aviasales</span>
+        <h3 class="win-promo__title">Скидка 15% на отели и перелёты</h3>
+        <p class="win-promo__desc">Оставьте email, и мы отправим промокод со скидкой на настоящее путешествие:</p>
+      </div>
+
+      <form class="win-form" id="winForm" novalidate>
+        <div class="win-form__row">
+          <input class="win-input" id="emailInput" type="email" placeholder="name@domain.ru" required autocomplete="email">
+          <button class="btn btn--promo" id="btnSendDiscount" type="submit">Получить скидку</button>
+        </div>
+        <div class="win-error" id="emailError" role="alert"></div>
+      </form>
+
+      <div class="win-success is-hidden" id="winSuccess">
+        <div class="win-success__msg">Промокод отправлен на <b id="sentEmailLabel"></b>! Проверяйте почту.</div>
+        <div class="win-code-box">
+          <span class="win-code-box__label">Ваш промокод:</span>
+          <code class="win-code-box__code" id="promoCodeVal">LEBED-OTPUSK-2026</code>
+          <button class="win-code-box__copy" id="btnCopyCode" type="button" title="Скопировать промокод">Скопировать</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="win-actions">
+      <button class="btn btn--restart" id="btnWinRestart" type="button">Сыграть ещё раз</button>
+      <a class="link" href="index.html">← На главную</a>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+<script src="game/assets.js?v=3"></script>
+<script src="game/models.js?v=4"></script>
+<script src="game/game.js?v=17"></script>
+</body>
+</html>

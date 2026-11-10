@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Дайте мне нормально отдохнуть</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Onest — запасной шрифт вместо ALS Hauss (если ALS Hauss подключён локально, он возьмётся первым) -->
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" href="assets/bg.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add('is-loading')</script>
+</head>
+<body>
+
+<section class="hero" id="hero" aria-label="Первый экран">
+
+  <!-- ── Слои параллакса (дальний → ближний) ── -->
+  <div class="layer bg" aria-hidden="true">
+    <img src="assets/bg.png" alt="" fetchpriority="high">
+  </div>
+
+  <div class="layer p b zombie" aria-hidden="true">
+    <div class="in in--left"><div class="bob">
+      <img src="assets/zombie.png" alt="">
+    </div></div>
+  </div>
+
+  <div class="layer p b shadow" aria-hidden="true">
+    <div class="in in--fade"><img src="assets/shadow.svg" alt=""></div>
+  </div>
+
+  <div class="layer p b char" aria-hidden="true">
+    <div class="in in--right">
+      <picture>
+        <source media="(max-aspect-ratio: 1/1)" srcset="assets/hero-m.png">
+        <img src="assets/hero-d.png" alt="">
+      </picture>
+    </div>
+  </div>
+
+  <div class="layer p b fg" aria-hidden="true">
+    <div class="in in--up"><img src="assets/foreground.png" alt=""></div>
+  </div>
+
+  <!-- ── Интерфейс ── -->
+  <div class="p t brand">
+    <div class="in in--down">
+      <a class="brand__logo" href="#" aria-label="Авиасейлс"><span class="brand__mask"><img src="assets/logo.svg" alt=""></span></a>
+      <img class="brand__x" src="assets/x.svg" alt="">
+      <span class="brand__partner"><img src="assets/partner.png" alt="Логотип партнёра"></span>
+    </div>
+  </div>
+
+  <div class="p t hud hud--top" aria-label="Письма: 3">
+    <div class="in in--down">
+      <div class="hud__row">
+        <span class="hud__ico"><img class="ico-mail" src="assets/mail.png" alt=""></span>
+        <span class="hud__val">3</span>
+      </div>
+    </div>
+  </div>
+
+  <h1 class="p t title">
+    <span class="in in--up">
+      <picture>
+        <source media="(max-aspect-ratio: 1/1)" srcset="assets/title-m.svg">
+        <img src="assets/title-d.svg" alt="Дайте мне нормально отдохнуть">
+      </picture>
+    </span>
+  </h1>
+
+  <p class="p t lead lead--1"><span class="in in--up">Спецпроект Aviasales: беги <br>от бюрократии и отстреливай проблемы, пока не вылетел.</span></p>
+  <p class="p t lead lead--2"><span class="in in--up">Лебеди из&nbsp;покрышек идут на&nbsp;ваш двор ордой, а&nbsp;впереди&nbsp;— безголовый с&nbsp;бомбами и&nbsp;криком «А-а-а!». Палите в&nbsp;упор и&nbsp;выиграйте путешествие</span></p>
+
+  <div class="p t start-wrap">
+    <div class="in in--up">
+      <a class="start" href="game.html?v=17">Начать</a>
+    </div>
+  </div>
+
+  <div class="p b hud hud--bottom">
+    <div class="in in--up">
+      <div class="hud__row hud__row--coin" aria-label="Монеты: 100">
+        <span class="hud__ico"><img class="ico-coin" src="assets/coin.png" alt=""></span>
+        <span class="hud__val">100</span>
+      </div>
+      <div class="hud__row hud__row--heart" aria-label="Здоровье: 100">
+        <span class="hud__ico"><img class="ico-heart" src="assets/heart.png" alt=""></span>
+        <span class="hud__val">100</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="parallax.js"></script>
+</body>
+</html>

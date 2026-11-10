@@ -1,0 +1,302 @@
+/* ─────────────────────────────────────────────────────────────
+   Первый экран спецпроекта
+   Все размеры — в «пикселях макета», умноженных на --u.
+   Десктоп: макет 1280×769 (MacBook Air - 1)
+   Мобайл:  макет 402×874  (iPhone 17 - 1), включается на портретных экранах
+   ───────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { margin: 0; background: #241709; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img { display: block; max-width: none; }
+
+:root {
+  --font-game: "ALS Hauss", "ALS Hauss VF", "Onest", Arial, sans-serif;
+  --green: #259c00;
+  --green-text: #2dbd00;
+  --brown: #241709;
+  --hud-bg: #141215;
+  --hud-border: rgba(216, 216, 216, .46);
+  --hud-text: #ffb83d;
+}
+
+/* ── Сцена ─────────────────────────────────────────────────── */
+
+.hero {
+  /* масштаб: макет вписывается в экран целиком */
+  --u: min(100cqw / 1280, 100cqh / 769);  /* размер самой секции, без полосы прокрутки */
+  --x0: calc(50% - 640 * var(--u));   /* левый край макета, сцена по центру */
+  container-type: size;
+
+  /* значения, которые обновляет parallax.js */
+  --mx: 0;       /* курсор / гироскоп, -1…1 */
+  --my: 0;
+
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  min-height: 320px;
+  overflow: hidden;
+  background: #e2ad62;
+  isolation: isolate;
+}
+
+/* Позиционирование в координатах макета */
+.p {
+  position: absolute;
+  left: calc(var(--x0) + var(--x) * var(--u));
+  width: calc(var(--w) * var(--u));
+}
+.p.t { top: calc(var(--y) * var(--u)); }
+.p.b { bottom: calc(var(--b) * var(--u)); }
+.zombie, .shadow, .char, .fg, .title, .start-wrap { height: calc(var(--h) * var(--u)); }
+
+/* Параллакс (только арт-слои): --dx/--dy — смещение от курсора, px макета */
+.layer {
+  --dx: 0; --dy: 0;
+  transform: translate3d(
+    calc(var(--mx) * var(--dx) * var(--u) * -1),
+    calc(var(--my) * var(--dy) * var(--u) * -1),
+    0);
+  will-change: transform;
+}
+
+.in { display: block; width: 100%; height: 100%; }
+:where(.in > img, .in > picture, .in > picture > img, .bob > img) { width: 100%; height: 100%; }
+
+/* ── Арт-слои ─────────────────────────────────────────────── */
+
+.bg {
+  position: absolute;
+  inset: calc(-24 * var(--u));  /* запас под смещение */
+  z-index: 0;
+  --dx: 14; --dy: 8;
+}
+.bg img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; }
+
+.zombie { z-index: 1; --x: 225;    --b: 43.73; --w: 500.362; --h: 279.272; --dx: 26; --dy: 12; }
+.shadow { z-index: 2; --x: 580.97; --b: -78;   --w: 652.306; --h: 115.448; --dx: 34; --dy: 14; }
+.char   { z-index: 3; --x: 661.13; --b: -41.77; --w: 812.147; --h: 612.769; --dx: 34; --dy: 14; }
+/* передний план прижат к правому нижнему углу экрана;
+   --r/--b — небольшой вылет за край, чтобы при параллаксе не было щели */
+.fg     { z-index: 4; --r: -20;    --b: -10;   --w: 662;     --h: 370;     --dx: 20; --dy: 10;
+          left: auto; right: calc(var(--r) * var(--u)); }
+
+.zombie img { object-fit: cover; }
+.char img   { object-fit: fill; object-position: bottom; }  /* как в макете: растянуто по рамке */
+.fg img     { object-fit: cover; transform: scaleX(-1); }   /* в макете слой отзеркален */
+
+/* ── Интерфейс ────────────────────────────────────────────── */
+
+.brand, .hud, .title, .lead, .start-wrap { z-index: 5; }
+
+.brand { --x: 24; --y: 25; --w: 220.22; height: calc(35 * var(--u)); }
+.brand .in {
+  position: relative;
+  scale: .7;                 /* логотип на 30% меньше макета */
+  transform-origin: 0 50%;   /* левый край и центр по высоте остаются на месте */
+}
+.brand__logo {
+  position: absolute; left: 0; top: 0;
+  width: calc(166.25 * var(--u)); height: calc(35 * var(--u));
+  opacity: .7;
+  transition: opacity .2s;
+}
+.brand__logo:hover { opacity: 1; }
+.brand__mask {
+  position: absolute;
+  inset: 0 .64% 1.74% .33%;
+  /* маска из assets/logo-mask.svg встроена: с file:// Chrome не грузит внешние маски */
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='164.643' height='34.3901' viewBox='0 0 164.643 34.3901' preserveAspectRatio='none'%3E%3Cpath d='M164.643 0H0V34.3901H164.643V0Z' fill='black'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='164.643' height='34.3901' viewBox='0 0 164.643 34.3901' preserveAspectRatio='none'%3E%3Cpath d='M164.643 0H0V34.3901H164.643V0Z' fill='black'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%;
+}
+.brand__mask img { width: 100%; height: 100%; }
+.brand__x {
+  position: absolute;
+  left: calc(175 * var(--u)); top: calc(15 * var(--u));
+  width: calc(5.42133 * var(--u)); height: calc(4.47133 * var(--u));
+}
+.brand__partner {
+  position: absolute;
+  left: calc(186 * var(--u)); top: 0;
+  width: calc(34.22 * var(--u)); height: calc(34 * var(--u));
+  overflow: hidden;
+}
+.brand__partner img {
+  position: absolute;
+  width: 136.46%; height: 193.8%;
+  left: -36.46%; top: -53.88%;
+}
+
+.title {
+  --x: 25; --y: 99; --w: 407; --h: 241.745;
+  margin: 0;
+  line-height: 0;
+}
+
+.lead {
+  --w: 333;
+  margin: 0;
+  font-size: calc(22 * var(--u));
+  line-height: .96;
+}
+.lead--1 { --x: 508; --y: 104; }
+.lead--2 { --x: 508; --y: 234; }
+
+.start-wrap { --x: 25; --y: 403; --w: 243; --h: 85; }
+.start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 0 calc(2 * var(--u));
+  background: var(--brown);
+  border: calc(5 * var(--u)) solid var(--green);
+  color: var(--green-text);
+  font-family: var(--font-game);
+  font-size: calc(53.973 * var(--u));
+  line-height: .873;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .2s ease, border-color .2s ease, color .2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.start:hover {
+  border-color: var(--green-text);
+  color: #3fe000;
+  box-shadow: 0 0 calc(28 * var(--u)) rgba(45, 189, 0, .45);
+}
+.start:active { transform: translateY(calc(3 * var(--u))) scale(.985); }
+.start:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+/* HUD */
+.hud--top    { --x: 1126; --y: 25; --w: 130.865; height: calc(42 * var(--u)); }
+.hud--bottom { --x: 25;   --b: 44; --w: 130.865; height: calc(92 * var(--u)); }
+.hud--bottom .in { display: flex; flex-direction: column; gap: calc(8 * var(--u)); }
+
+.hud__row {
+  display: flex;
+  justify-content: space-between;
+  width: calc(130.865 * var(--u));
+  height: calc(42 * var(--u));
+}
+.hud__ico, .hud__val {
+  position: relative;
+  background: var(--hud-bg);
+  border: max(1px, 1.26 * var(--u)) solid var(--hud-border);
+}
+.hud__ico { width: calc(41.986 * var(--u)); height: calc(41.986 * var(--u)); }
+.hud__ico img { position: absolute; object-fit: cover; }
+.ico-heart {
+  left: calc(4.74 * var(--u)); top: calc(5.74 * var(--u));   /* 6×7 от внешнего края рамки */
+  width: calc(29 * var(--u)); height: calc(29 * var(--u));
+}
+.ico-mail {
+  left: calc(3.74 * var(--u)); top: calc(5.24 * var(--u));   /* 32×29 по центру квадрата */
+  width: calc(32 * var(--u)); height: calc(29 * var(--u));
+  object-fit: contain;
+}
+.ico-coin {
+  left: calc(3.74 * var(--u)); top: calc(3.74 * var(--u));   /* 5×5 от внешнего края рамки */
+  width: calc(32 * var(--u)); height: calc(32 * var(--u));
+}
+.hud__val {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(83 * var(--u));
+  height: calc(42 * var(--u));
+  padding-bottom: calc(2 * var(--u));
+  color: var(--hud-text);
+  font-family: var(--font-game);
+  font-size: calc(29.543 * var(--u));
+  line-height: .873;
+}
+
+/* ── Мобайл (портретная ориентация) ───────────────────────── */
+
+@media (max-aspect-ratio: 1/1) {
+  .hero {
+    --u: min(100cqw / 402, 100cqh / 720);
+    --x0: calc(50% - 201 * var(--u));
+  }
+
+  .bg img { object-position: 66% 50%; }
+
+  .zombie { --x: -68;  --b: 289; --w: 181; --h: 101; --dx: 18; --dy: 8; }
+  .char   { --x: -212; --b: -29; --w: 916; --h: 511; --dx: 22; --dy: 10; }
+  .fg     { --r: -77;  --b: -13; --w: 662; --h: 370; --dx: 30; --dy: 8; }
+  .shadow { display: none; }
+  .char img { object-fit: cover; }
+
+  .brand { --x: 17; --y: 17; }
+  .hud--top { --x: 256; --y: 13; }
+
+  .title { --x: 17; --y: 83; --w: 362; --h: 203.206; }
+  .lead--1 { --x: 17; --y: 306; line-height: 1; }
+  .lead--2 { display: none; }
+
+  /* нижний блок прибит к низу экрана */
+  .p.t.start-wrap { --x: 17; top: auto; bottom: calc(111 * var(--u)); }
+  .hud--bottom { --x: 17; --b: 24; --w: 305.865; height: calc(42 * var(--u)); }
+  .hud--bottom .in { flex-direction: row; gap: calc(27.14 * var(--u)); }
+  .hud__row--heart { order: -1; }
+}
+
+/* ── Появление при загрузке ───────────────────────────────── */
+
+@keyframes in-up    { from { opacity: 0; transform: translateY(40px); } }
+@keyframes in-down  { from { opacity: 0; transform: translateY(-24px); } }
+@keyframes in-left  { from { opacity: 0; transform: translateX(-90px); } }
+@keyframes in-right { from { opacity: 0; transform: translateX(90px); } }
+@keyframes in-fade  { from { opacity: 0; } }
+
+.in {
+  animation: var(--anim, in-fade) .9s cubic-bezier(.2, .8, .2, 1) var(--delay, 0s) both;
+}
+.in--up    { --anim: in-up; }
+.in--down  { --anim: in-down; }
+.in--left  { --anim: in-left; }
+.in--right { --anim: in-right; }
+
+.fg      .in { --delay: .05s; }
+.char    .in { --delay: .15s; }
+.shadow  .in { --delay: .35s; }
+.zombie  .in { --delay: .45s; }
+.brand   .in, .hud--top .in { --delay: .2s; }
+.title   .in { --delay: .3s; }
+.lead--1 .in { --delay: .42s; }
+.lead--2 .in { --delay: .5s; }
+.start-wrap .in { --delay: .6s; }
+.hud--bottom .in { --delay: .7s; }
+
+/* пока сцена грузится — всё на паузе (класс снимает parallax.js) */
+.is-loading .in { animation-play-state: paused; }
+
+/* зомби бежит: лёгкое покачивание */
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50%      { transform: translateY(-4%) rotate(1.5deg); }
+}
+.bob { width: 100%; height: 100%; transform-origin: 50% 90%; animation: bob .8s ease-in-out infinite; }
+
+/* персонаж дышит */
+@keyframes breathe { 50% { transform: scaleY(1.008); } }
+.char picture { display: block; transform-origin: 50% 100%; animation: breathe 4s ease-in-out infinite; }
+
+/* ── Без анимаций ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .in, .bob, .char picture { animation: none !important; }
+  .layer { transform: none !important; }
+}
