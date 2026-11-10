@@ -259,6 +259,19 @@ canvas#c {
   border: 2px solid var(--hud-text);
   object-fit: cover;
 }
+.speech__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.speech b {
+  font-family: var(--font);
+  font-weight: 400;
+  font-size: clamp(11px, 1.6vmin, 14px);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--hud-text);
+}
+/* NPC говорит слева с другим цветом — сразу видно, чья реплика */
+.speech.is-npc { border-color: rgba(255, 120, 90, .6); }
+.speech.is-npc img { border-color: #ff7a5c; }
+.speech.is-npc b { color: #ff9a80; }
 .speech p {
   margin: 0;
   color: #fff;

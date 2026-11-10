@@ -1050,6 +1050,8 @@ let speechT = 0;
 const voice = new Audio();
 voice.preload = 'auto';
 const speechImg = speech.querySelector('img');
+const speechWho = speech.querySelector('b');
+const speechText = speech.querySelector('p');
 /* Озвучка: реплики идут по очереди и не обрывают друг друга.
    Файлы — assets/voice-game/<file>.mp3 (готовит tools/prepare_voice.py из assets/voice).
    Важность: 3 — сборы, 2 — ответы героя, 1 — крики зазывал. Неважное при занятой очереди выкидывается. */
@@ -1063,34 +1065,86 @@ function probeVoice(file) {               // заранее узнаём, ест
   a.addEventListener('error', () => { voiceOk[file] = false; }, { once: true });
   a.src = VOICE_DIR + file + '.mp3';
 }
+/* Режиссёр реплик: говорит всегда кто-то один.
+   — Очередь «сцен»: сцена = одна реплика или диалог (продавец → ответ героя), диалог не разрывается.
+   — Между репликами одного диалога пауза .45 с, между разными сценами — 1 с (другой говорящий — 1.3 с).
+   — Выкрики зазывал (bark) звучат, только если эфир свободен; иначе просто пропускаются, а не копятся.
+   — Важность: 3 — сборы, 2 — герой, 1 — реакции NPC. Устаревшие реакции не догоняем. */
+const SPEAKER = { hero: 'Вы', corn: 'Продавец кукурузы', photo: 'Фотограф', flyer: 'Промоутер', anim: 'Аниматор' };
 const speechQ = [];
-let speechCur = null, voiceBusy = false, voiceTimer = 0;
-function say(item) {
-  if (!item) return;
-  const prio = item.prio || (item.who === 'npc' ? 1 : 2);
-  if (speechCur && speechCur.line === item.line) return;
-  if (speechQ.some((q) => q.item.line === item.line)) return;
-  if (!speechCur) { playLine(item); return; }
-  speechQ.push({ item, prio, at: time });
-  speechQ.sort((a, b) => b.prio - a.prio);
-  while (speechQ.length > 2) speechQ.pop();          // очередь короткая — старое неважное выкидываем
+let speechCur = null, speechScene = null, voiceBusy = false, voiceTimer = 0, pumpWait = false;
+let speechFree = -99;                    // когда эфир освободился (time)
+let lastWho = null;
+const STALE = { 1: 5, 2: 8 };            // через сколько секунд реплику уже поздно говорить
+function sceneOf(lines) {
+  lines = lines.filter(Boolean);
+  if (!lines.length) return null;
+  return { lines, prio: Math.max(...lines.map((l) => l.prio || (l.who === 'npc' ? 1 : 2))), at: time };
+}
+function sameLine(a, b) { return a && b && a.line === b.line; }
+function queued(item) {
+  return sameLine(speechCur, item) || speechQ.some((sc) => sc.lines.some((l) => sameLine(l, item))) ||
+    (speechScene && speechScene.lines.some((l) => sameLine(l, item)));
+}
+function enqueue(sc) {
+  if (!sc || sc.lines.some(queued)) return;
+  speechQ.push(sc);
+  speechQ.sort((a, b) => b.prio - a.prio || a.at - b.at);   // важное вперёд, внутри важности — по порядку
+  while (speechQ.length > 3) speechQ.pop();
+  if (!speechCur && !speechScene && !pumpWait) pump();   // во время паузы между сценами ждём таймер
+}
+function say(item) { enqueue(sceneOf([item])); }
+function sayDialog(...lines) { enqueue(sceneOf(lines)); }
+function bark(item) {                    // выкрик «в воздух»: только в тишине
+  if (!item || speechCur || speechScene || pumpWait || speechQ.length || time - speechFree < 2) return false;
+  say(item); return true;
+}
+function pump() {                        // следующая сцена из очереди
+  clearTimeout(voiceTimer); pumpWait = false;
+  if (state !== 'playing') return;
+  while (speechQ.length) {
+    const sc = speechQ.shift();
+    if (sc.prio < 3 && time - sc.at > (STALE[sc.prio] || 8)) continue;
+    speechScene = sc; sc.i = 0;
+    playLine(sc.lines[0]);
+    return;
+  }
+}
+function speakerOf(item) {
+  if (item.by) return item.by;
+  if (item.who !== 'npc') return SPEAKER.hero;
+  const k = Object.keys(SPEAKER).find((key) => item.file && item.file.includes(key));
+  return SPEAKER[k] || 'Отдыхающий';
 }
 function playLine(item) {
   speechCur = item;
   speechImg.src = item.who === 'npc' ? 'assets/hustler-face.png' : 'assets/hero-face.png';
-  speech.querySelector('p').textContent = `«${item.line}»`;
+  speech.classList.toggle('is-npc', item.who === 'npc');
+  speechWho.textContent = speakerOf(item);
+  speechText.textContent = `«${item.line}»`;
+  speech.classList.remove('is-open'); void speech.offsetWidth;   // новая реплика — пузырь заново «выезжает»
   speech.classList.add('is-open');
   clearTimeout(voiceTimer);
   const finish = () => {
     if (speechCur !== item) return;
     clearTimeout(voiceTimer);
-    voiceBusy = false; speechCur = null;
-    speechT = .5;                                       // субтитр ещё полсекунды
-    voiceTimer = setTimeout(nextLine, 250);
+    voiceBusy = false; speechCur = null; lastWho = speakerOf(item);
+    const sc = speechScene;
+    if (sc && ++sc.i < sc.lines.length) {             // диалог продолжается
+      speechT = 99;
+      voiceTimer = setTimeout(() => { if (state === 'playing' && speechScene === sc) playLine(sc.lines[sc.i]); }, 450);
+      return;
+    }
+    speechScene = null; speechFree = time;
+    speechT = .6;                                       // субтитр ещё чуть-чуть
+    const nxt = speechQ[0];
+    const gap = nxt && speakerOf(nxt.lines[0]) !== lastWho ? 1300 : 1000;
+    pumpWait = true;
+    voiceTimer = setTimeout(pump, gap);
   };
   if (!item.file || voiceOk[item.file] === false) {    // нет озвучки — только субтитр
     voiceBusy = false; speechT = 99;
-    voiceTimer = setTimeout(finish, 2400);
+    voiceTimer = setTimeout(finish, 1200 + item.line.length * 45);
     return;
   }
   voiceBusy = true; speechT = 99;
@@ -1102,16 +1156,9 @@ function playLine(item) {
   if (p && p.catch) p.catch(() => { voiceBusy = false; voiceTimer = setTimeout(finish, 2000); });
   voiceTimer = setTimeout(finish, 9000);              // на всякий случай: реплика не дольше 9 секунд
 }
-function nextLine() {
-  if (state !== 'playing') return;
-  while (speechQ.length) {
-    const q = speechQ.shift();
-    if (time - q.at < 7 || q.prio >= 3) { playLine(q.item); return; }   // устаревшие крики не догоняем
-  }
-}
 function stopSpeech() {
   speechQ.length = 0; clearTimeout(voiceTimer);
-  voice.pause(); voiceBusy = false; speechCur = null;
+  voice.pause(); voiceBusy = false; speechCur = null; speechScene = null; pumpWait = false;
   speech.classList.remove('is-open'); speechT = 0;
 }
 const banner = $('banner');
@@ -1326,6 +1373,7 @@ function resetGame() {
   player.yaw = 0; player.pitch = 0; player.hp = 100;
   ammo.shells = 50; ammo.bullets = 300;
   score = kills = wave = 0; time = 0;
+  cornHeroAt = speechFree = foodSaid = -99;   // таймеры реплик считаются от time — сбрасываем вместе с ним
   tripLeft = TRIP_ITEMS.slice(); tripGot = 0;
   stopSpeech();
   resetPromoForm();
@@ -1646,7 +1694,7 @@ const LINES = {
   cornCall:  L('npc',  'npc-corn-call',   'Кукуруза! Пахлава! Чурчхела!'),
   cornCall2: L('npc',  'npc-corn-call-2', 'Горячая кукуруза! Холодное пиво!'),
   cornCall3: L('npc',  'npc-corn-call-3', 'Брат, кукурузу бери! Для тебя скидка!'),
-  cornCall4: L('npc',  'npc-corn-call-3', 'Опять ты? Кукуруза, свежая!'),
+  cornCall4: L('npc',  null,              'Опять ты? Кукуруза, свежая!'),   // своей озвучки нет — только субтитр
   cornSold:  L('npc',  'npc-corn-sold',   'Кукуруза — триста! Сдачи нет!'),
   cornHero:  L('hero', 'hero-corn',       'Кукуруза за триста? Я же не просил!'),
   cornFlee:  L('npc',  'npc-corn-flee',   'Ай, жадный турист!'),
@@ -1887,9 +1935,10 @@ function startBeach() {             // на старте игры: анимат�
   const v = spawnNpc('vendor');
   v.state = 'wait'; v.wait = 5;
 }
-function npcSay(n, line, cooldown = 6) {
-  if (time - n.saidAt < cooldown) return;
-  n.saidAt = time; say(line);
+function npcBark(n, line, cooldown = 6) {   // выкрик зазывалы: только если никто не говорит
+  if (time - n.saidAt < cooldown) return false;
+  if (!bark(line)) return false;
+  n.saidAt = time; return true;
 }
 function npcFlee(n, line) {
   if (n.state === 'flee') return;
@@ -1927,7 +1976,7 @@ function takeCoins(amount) {
 }
 
 const npcHand = new THREE.Vector3();
-let invertControls = false, camRoll = 0;
+let invertControls = false, camRoll = 0, cornHeroAt = -99;
 function updateBeach(dt) {
   // платные шезлонги и полотенца
   let inPaid = false;
@@ -1958,13 +2007,14 @@ function updateBeach(dt) {
       if (n.state === 'wait') {
         n.yaw = toward;
         n.wait -= dt;
-        if (n.wait <= 0) { n.state = 'come'; npcSay(n, pick(CORN_CALLS), 4); }
+        if (n.wait <= 0) { n.state = 'come'; npcBark(n, pick(CORN_CALLS), 4); }
       } else if (n.state === 'come') {
         n.yaw = toward;
         if (d > n.cfg.stop) walk(1, n.cfg.speed);
         else {
-          say(LINES.cornSold); takeCoins(300);
-          setTimeout(() => { if (state === 'playing') say(LINES.cornHero); }, 2200);
+          const reply = time - cornHeroAt > 30 ? LINES.cornHero : null;   // герой огрызается не на каждую продажу
+          if (reply) cornHeroAt = time;
+          sayDialog(LINES.cornSold, reply); takeCoins(300);               // продал → ответ героя, одним диалогом
           n.state = 'back'; n.fleeTo = rand(13, 19);
         }
       } else {                               // 'back' — отходит после продажи, 'flee' — убегает от выстрела
@@ -1977,12 +2027,12 @@ function updateBeach(dt) {
       n.yaw = n.groundSpeaker ? toward : toward + Math.sin(n.t * 6) * .4;
       if (!n.speaker) {
         n.wait -= dt;
-        if (n.wait <= 0) { n.speaker = true; n.prop.hand.visible = true; if (d < 40) say(LINES.animCall); }
+        if (n.wait <= 0) { n.speaker = true; n.prop.hand.visible = true; if (d < 40) npcBark(n, LINES.animCall, 0); }
       }
-      if (n.speaker && d < 22) npcSay(n, LINES.animCall, 30);
+      if (n.speaker && d < 22) npcBark(n, LINES.animCall, 30);
       if (n.speaker && d < 11) {          // рядом с колонкой экран слегка качает в ритм (управление больше не путаем)
         roll = Math.sin(time * 4.2) * .035 * clamp(1.4 - d / 11, 0, 1);
-        if (time - n.heroAt > 25) { n.heroAt = time; setTimeout(() => { if (state === 'playing') say(LINES.animHero); }, 1600); }
+        if (time - n.heroAt > 25 && time - n.saidAt > 1.5) { n.heroAt = time; say(LINES.animHero); }
       }
       // громкость: рядом громко, далеко — тихо, но слышно
       const vol = n.speaker ? .05 + .95 * Math.pow(clamp(1 - d / 55, 0, 1), 2) : 0;
@@ -1992,7 +2042,7 @@ function updateBeach(dt) {
     } else {
       // гости: фотограф и листовки
       if (n.state === 'come') {
-        if (!n.called && d < 30) { n.called = true; say(n.cfg.call); }
+        if (!n.called && d < 30) { n.called = true; say(n.cfg.call); }   // встаёт в очередь, никого не перебивает
         if (d > n.cfg.stop) walk(1, n.cfg.speed); else arriveNpc(n);
         n.yaw = toward;
       } else if (n.state === 'photo') {
@@ -2360,6 +2410,7 @@ function frame(now) {
 
 // отладка: game.html?debug — ручная прокрутка симуляции из консоли
 if (/[?&]debug/.test(location.search)) {
+  const dbgLine = (key) => { const all = [...TRIP_ITEMS, ...Object.values(LINES), ...FOOD.map((f) => f.line)]; return LINES[key] || all.find((l) => l.file === key); };
   window.__dbg = {
     step(sec = 1, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) tick(dt); render(); return this.info(); },
     info: () => ({ state, wave, hp: Math.round(player.hp), score, kills, enemies: enemies.length, queue: spawnQueue.length, ammo: { ...ammo }, cur }),
@@ -2373,8 +2424,10 @@ if (/[?&]debug/.test(location.search)) {
     weapon: (i) => selectWeapon(i),
     god() { player.hp = 1e9; },
     snd: () => Snd.debug(),
-    voice: () => ({ cur: speechCur && speechCur.file, busy: voiceBusy, queue: speechQ.map((q) => q.item.file), missing: Object.keys(voiceOk).filter((k) => voiceOk[k] === false) }),
-    say: (file) => { const all = [...TRIP_ITEMS, ...Object.values(LINES), ...FOOD.map((f) => f.line)]; say(all.find((l) => l.file === file)); },
+    voice: () => ({ cur: speechCur && speechCur.line, who: speechCur && speakerOf(speechCur), busy: voiceBusy, scene: speechScene && speechScene.lines.map((l) => l.line), queue: speechQ.map((q) => q.lines.map((l) => l.line).join(' → ')), missing: Object.keys(voiceOk).filter((k) => voiceOk[k] === false) }),
+    say: (file) => say(dbgLine(file)),
+    dialog: (...files) => sayDialog(...files.map(dbgLine)),
+    bark: (file) => bark(dbgLine(file)),
     silent() { voice.muted = true; music.muted = true; },
     npc(kind) { let n = npcs.find((m) => m.kind === kind); if (!n) n = spawnNpc(kind); if (kind !== 'animator') { n.x = player.pos.x - Math.sin(player.yaw) * 8; n.z = player.pos.z - Math.cos(player.yaw) * 8; n.state = 'come'; } return n.kind; },
     npcInfo: () => npcs.map((n) => ({ kind: n.kind, state: n.state, d: Math.round(Math.hypot(player.pos.x - n.x, player.pos.z - n.z)) })),
