@@ -68,4 +68,58 @@
   }).observe(hero);
 
   raf = requestAnimationFrame(tick);
+
+  /* ── Управление модальным окном сообщений ────────────────── */
+  const btnMail = document.getElementById('btnMail');
+  const mailModal = document.getElementById('mailModal');
+  const mailClose = document.getElementById('mailClose');
+  const mailBackdrop = document.getElementById('mailBackdrop');
+  const badgePulse = document.querySelector('.hud__badge-pulse');
+
+  function playMailChime() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const now = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(587.33, now);
+      o.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(now);
+      o.stop(now + 0.4);
+    } catch (_) {}
+  }
+
+  function openMail() {
+    if (!mailModal) return;
+    mailModal.classList.add('is-open');
+    mailModal.setAttribute('aria-hidden', 'false');
+    if (badgePulse) badgePulse.style.display = 'none';
+    playMailChime();
+  }
+
+  function closeMail() {
+    if (!mailModal) return;
+    mailModal.classList.remove('is-open');
+    mailModal.setAttribute('aria-hidden', 'true');
+  }
+
+  if (btnMail) btnMail.addEventListener('click', openMail);
+  const btnRules = document.getElementById('btnRules');   // «Правила» открывают те же письма с планом игры
+  if (btnRules) btnRules.addEventListener('click', openMail);
+  if (mailClose) mailClose.addEventListener('click', closeMail);
+  if (mailBackdrop) mailBackdrop.addEventListener('click', closeMail);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && mailModal && mailModal.classList.contains('is-open')) {
+      closeMail();
+    }
+  });
 })();

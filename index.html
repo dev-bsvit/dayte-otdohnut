@@ -9,7 +9,8 @@
   <!-- Onest — запасной шрифт вместо ALS Hauss (если ALS Hauss подключён локально, он возьмётся первым) -->
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400&display=swap" rel="stylesheet">
   <link rel="preload" as="image" href="assets/bg.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="preload" as="font" href="assets/fonts/lebowski.otf" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=3">
   <script>document.documentElement.classList.add('is-loading')</script>
 </head>
 <body>
@@ -55,28 +56,25 @@
 
   <div class="p t hud hud--top" aria-label="Письма: 3">
     <div class="in in--down">
-      <div class="hud__row">
+      <button class="hud__row hud__row--btn" id="btnMail" type="button" aria-label="Открыть входящие сообщения (3)" title="Открыть входящие сообщения">
         <span class="hud__ico"><img class="ico-mail" src="assets/mail.png" alt=""></span>
         <span class="hud__val">3</span>
-      </div>
+        <span class="hud__badge-pulse" aria-hidden="true"></span>
+      </button>
     </div>
   </div>
 
   <h1 class="p t title">
-    <span class="in in--up">
-      <picture>
-        <source media="(max-aspect-ratio: 1/1)" srcset="assets/title-m.svg">
-        <img src="assets/title-d.svg" alt="Дайте мне нормально отдохнуть">
-      </picture>
-    </span>
+    <span class="in in--up">Дайте мне<br>нормально<br>отдохнуть</span>
   </h1>
 
   <p class="p t lead lead--1"><span class="in in--up">Спецпроект Aviasales: беги <br>от бюрократии и отстреливай проблемы, пока не вылетел.</span></p>
-  <p class="p t lead lead--2"><span class="in in--up">Лебеди из&nbsp;покрышек идут на&nbsp;ваш двор ордой, а&nbsp;впереди&nbsp;— безголовый с&nbsp;бомбами и&nbsp;криком «А-а-а!». Палите в&nbsp;упор и&nbsp;выиграйте путешествие</span></p>
+  <p class="p t lead lead--2"><span class="in in--up">Вы&nbsp;собрались в&nbsp;отпуск, но&nbsp;паспорт пропал, во&nbsp;двор лезут лебеди из&nbsp;покрышек, а&nbsp;на&nbsp;пляже пристают зазывалы. Отбейтесь от&nbsp;всех&nbsp;— и&nbsp;отдыхайте спокойно. Ну,&nbsp;почти</span></p>
 
   <div class="p t start-wrap">
     <div class="in in--up">
-      <a class="start" href="game.html?v=17">Начать</a>
+      <a class="btn btn--primary" href="game.html?v=17">Начать</a>
+      <button class="btn btn--ghost" id="btnRules" type="button">Правила</button>
     </div>
   </div>
 
@@ -94,6 +92,70 @@
   </div>
 </section>
 
-<script src="parallax.js"></script>
+<!-- Модальное окно входящих сообщений -->
+<div class="mail-modal" id="mailModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="mailTitle">
+  <div class="mail-modal__backdrop" id="mailBackdrop"></div>
+  <div class="mail-modal__panel">
+    <div class="mail-modal__header">
+      <div class="mail-modal__title-wrap">
+        <span class="mail-modal__icon"><img src="assets/mail.png" alt=""></span>
+        <h2 class="mail-modal__title" id="mailTitle">Входящие сообщения <span class="mail-modal__count">3</span></h2>
+      </div>
+      <button class="mail-modal__close" id="mailClose" type="button" aria-label="Закрыть сообщения">×</button>
+    </div>
+
+    <div class="mail-modal__body">
+      <!-- Сообщение 1: Завязка сюжета -->
+      <article class="mail-card mail-card--urgent">
+        <div class="mail-card__meta">
+          <span class="mail-card__sender">🚨 Рабочий чат &amp; Бюрократия</span>
+          <span class="mail-card__time">только что</span>
+        </div>
+        <h3 class="mail-card__subject">Срочно! Ты не можешь просто так взять и отдохнуть!</h3>
+        <p class="mail-card__text">
+          Ты наконец-то вырвался на пляж, но нормально отдохнуть не дают! В пятницу вечером прилетели 40 правок, ЖЭК требует справку о прописке, на пляже пристают зазывалы, а из кустов бежит орда лебедей из покрышек и безголовых с бомбами. Твой отпуск под угрозой срыва!
+        </p>
+      </article>
+
+      <!-- Сообщение 2: Правила игры -->
+      <article class="mail-card">
+        <div class="mail-card__meta">
+          <span class="mail-card__sender">🧳 Служба спасения отдыхающих</span>
+          <span class="mail-card__time">1 мин назад</span>
+        </div>
+        <h3 class="mail-card__subject">План действий: отстреливайся от проблем!</h3>
+        <p class="mail-card__text">
+          Выход один: хватай боевой чемодан и надувного фламинго — пали в упор по горящим дедлайнам и бюрократии. Собирай вещи в дорогу (паспорт, визу, шлёпанцы), уворачивайся от кричащих камикадзе и продержись <strong>все 5 уровней</strong> до победы над Главным лебедем района!
+        </p>
+      </article>
+
+      <!-- Сообщение 3: Скидка за деньги -->
+      <article class="mail-card mail-card--reward">
+        <div class="mail-card__meta">
+          <span class="mail-card__sender">✈️ Aviasales Бонус</span>
+          <span class="mail-card__time">2 мин назад</span>
+        </div>
+        <h3 class="mail-card__subject">Награда: скидка зависит от собранных денег!</h3>
+        <p class="mail-card__text">
+          Каждая поверженная проблема и каждый выбитый бонус приносят деньги и монеты. Чем больше ты насобираешь за игру, тем выше твоя скидка на реальные авиабилеты и отели:
+        </p>
+        <ul class="mail-card__tiers">
+          <li><span>До 3 000 монет</span> <strong>Скидка 10%</strong></li>
+          <li><span>От 3 000 до 6 000 монет</span> <strong>Скидка 15%</strong></li>
+          <li><span>От 6 000 монет и выше</span> <strong>Скидка 20% (VIP)</strong></li>
+        </ul>
+        <p class="mail-card__subtext">
+          Пройди 5 волн, оставь email на финальном экране победы и забери заслуженный промокод на отпуск!
+        </p>
+      </article>
+    </div>
+
+    <div class="mail-modal__footer">
+      <a class="mail-modal__action btn btn--primary" href="game.html?v=17">В бой за отпуск! →</a>
+    </div>
+  </div>
+</div>
+
+<script src="parallax.js?v=3"></script>
 </body>
 </html>

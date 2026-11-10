@@ -1193,11 +1193,33 @@ function winGame() {
   firing = false;
   Snd.screamStopAll(); clearBeach(); stopSpeech();
   if (document.pointerLockElement) document.exitPointerLock();
-  $('winText').textContent = `Вы выдержали все 5 волн, уничтожили ${kills} ${plural(kills, 'проблему', 'проблемы', 'проблем')} и набрали ${score} очков. Главный лебедь повержен — пора в долгожданный отпуск!`;
-  setupWinPromo();
+
+  let discountPercent = 10;
+  let promoCode = 'LEBED-START-10';
+  let tierName = 'Базовая скидка';
+
+  if (score >= 6000) {
+    discountPercent = 20;
+    promoCode = 'LEBED-VIP-20';
+    tierName = 'Максимальная VIP-скидка';
+  } else if (score >= 3000) {
+    discountPercent = 15;
+    promoCode = 'LEBED-SUPER-15';
+    tierName = 'Повышенная скидка';
+  }
+
+  $('winText').innerHTML = `Вы выдержали все 5 волн, уничтожили ${kills} ${plural(kills, 'проблему', 'проблемы', 'проблем')} и насобирали <b>${score} монет</b>! За такую добычу вам начислена <b>скидка ${discountPercent}%</b> на настоящий отпуск!`;
+
+  const promoTitle = document.querySelector('.win-promo__title');
+  if (promoTitle) promoTitle.textContent = `${tierName}: Скидка ${discountPercent}% на отели и перелёты`;
+
+  const promoDesc = document.querySelector('.win-promo__desc');
+  if (promoDesc) promoDesc.textContent = `За собранные ${score} монет вам начислена скидка ${discountPercent}%. Оставьте email, и мы отправим персональный промокод:`;
+
+  setupWinPromo(promoCode, discountPercent);
 }
-const PROMO_CODE = 'LEBED-OTPUSK-2026';
-function setupWinPromo() {
+
+function setupWinPromo(promoCode = 'LEBED-START-10', discountPercent = 10) {
   const form = $('winForm');
   const input = $('emailInput');
   const errEl = $('emailError');
@@ -1206,7 +1228,7 @@ function setupWinPromo() {
   const codeVal = $('promoCodeVal');
   const btnCopy = $('btnCopyCode');
 
-  if (codeVal) codeVal.textContent = PROMO_CODE;
+  if (codeVal) codeVal.textContent = promoCode;
 
   try {
     const savedEmail = localStorage.getItem('aviasales_promo_email');
@@ -1245,7 +1267,7 @@ function setupWinPromo() {
 
   if (btnCopy) {
     btnCopy.onclick = () => {
-      const copyText = PROMO_CODE;
+      const copyText = (codeVal && codeVal.textContent) || promoCode;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(copyText).then(onCopied).catch(fallbackCopy);
       } else {
