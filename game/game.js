@@ -1247,11 +1247,18 @@ function queued(item) {
     (speechScene && speechScene.lines.some((l) => sameLine(l, item)));
 }
 function enqueue(sc) {
-  if (!sc || sc.lines.some(queued)) return;
+  if (!sc || sc.lines.some(queued)) return false;
   speechQ.push(sc);
   speechQ.sort((a, b) => b.prio - a.prio || a.at - b.at);   // важное вперёд, внутри важности — по порядку
   while (speechQ.length > 3) speechQ.pop();
   if (!speechCur && !speechScene && !pumpWait) pump();   // во время паузы между сценами ждём таймер
+  return speechQ.includes(sc) || speechScene === sc;
+}
+function sayScene(lines, onDone) {        // сцена с отметкой «договорили» — для сценария босса
+  const sc = sceneOf(lines);
+  if (!sc) return false;
+  sc.prio = 3; sc.onDone = onDone;         // важная: не устаревает и не вылетает из очереди
+  return enqueue(sc);
 }
 function say(item) { enqueue(sceneOf([item])); }
 function sayDialog(...lines) { enqueue(sceneOf(lines)); }
@@ -1296,6 +1303,7 @@ function playLine(item) {
       return;
     }
     speechScene = null; speechFree = time;
+    if (sc && sc.onDone) sc.onDone();
     speechT = .6;                                       // субтитр ещё чуть-чуть
     const nxt = speechQ[0];
     const gap = nxt && speakerOf(nxt.lines[0]) !== lastWho ? 1300 : 1000;
@@ -1617,9 +1625,8 @@ function spawnEnemy(type, x, z) {
   } else if (type === 'boss' && BOSS) {
     const rig = makeBoss();
     e = { obj: rig.g, rig, mats: rig.mats, boss: true, chief: true, sc: 1, hp: 900 + wave * 60, speed: 4.6, r: 1.3,
-      attackCd: 1.5, swing: 0, swingDur: 1.35, callT: 6, said50: false, said20: false, score: 3000 };
+      attackCd: 1.5, swing: 0, swingDur: 1.35, step: 0, stepBusy: false, stepT: .8, stepAt: 0, shieldMsgAt: -99, score: 3000 };
     showBanner('Начальник отдела', 'Звонит прямо в отпуск. Не бери трубку!', 3);
-    sayDialog(LINES.bossSpawn, LINES.heroBoss1);
   } else {
     const boss = type === 'boss';
     const m = makeSwanMesh(boss);
@@ -1713,7 +1720,7 @@ function updateChief(e, dt, d, ux, uz) {
       const fx = -Math.sin(e.obj.rotation.y), fz = -Math.cos(e.obj.rotation.y);
       for (let k = 1; k <= 3; k++) emit(e.x + fx * 2.2 * k, e.y + .2, e.z + fz * 2.2 * k, 30, ['#d8c39a', '#b89a66', '#8a7450'], 7, 3, .9);   // волна пыли к игроку
       const dp = Math.hypot(player.pos.x - e.x, player.pos.z - e.z);
-      if (dp < reach + 1.5) { hurtPlayer(18); if (Math.random() < .5) say(pick(BOSS_HITS)); }
+      if (dp < reach + 1.5) { hurtPlayer(18); if (time - (e.hitSaidAt || -99) > 15 && bark(pick(BOSS_HITS))) e.hitSaidAt = time; }   // изредка и только в тишине
     }
   } else if (d > reach) {
     moving = true;
@@ -1723,11 +1730,24 @@ function updateChief(e, dt, d, ux, uz) {
     e.swing = e.swingDur = 1.35;
   }
   animateBoss(e, dt, moving);
-  // реплики: звонит по ходу боя, жалуется на ранениях
-  e.callT -= dt;
-  if (e.callT <= 0) { e.callT = rand(7, 10); say(pick(BOSS_CALLS)); }
-  if (!e.said50 && e.hp < e.maxHp * .5) { e.said50 = true; say(LINES.bossHurt1); }
-  if (!e.said20 && e.hp < e.maxHp * .2) { e.said20 = true; say(LINES.bossHurt2); }
+  bossScript(e, dt);
+}
+/* Сценарий Начальника: все реплики по порядку, каждая один раз.
+   Пока он не договорил, убить его нельзя — здоровье не падает ниже «порога» текущего шага.
+   Если игрок уже упёрся в порог, следующая реплика идёт сразу, без паузы. */
+function bossFloor(e) { return e.maxHp * (BOSS_SCRIPT.length - e.step) / (BOSS_SCRIPT.length + 1); }
+function bossScript(e, dt) {
+  if (e.step >= BOSS_SCRIPT.length) return;
+  if (e.stepBusy) {
+    if (time - e.stepAt > 20) { e.stepBusy = false; e.step++; e.stepT = 1; }   // страховка: реплика потерялась
+    return;
+  }
+  if (e.hp <= bossFloor(e) + 1) e.stepT = Math.min(e.stepT, .4);
+  e.stepT -= dt;
+  if (e.stepT > 0) return;
+  const lines = BOSS_SCRIPT[e.step];
+  const ok = sayScene(lines, () => { if (e.stepBusy) { e.stepBusy = false; e.step++; e.stepT = 2.5; } });
+  if (ok) { e.stepBusy = true; e.stepAt = time; } else { e.step++; e.stepT = 1; }
 }
 
 function pushOut(o, r) {
@@ -1754,6 +1774,13 @@ function damageEnemy(e, dmg, dir) {
   if (e.dead) return;
   e.hp -= dmg;
   e.flash = .08;
+  if (e.chief) {
+    const floor = bossFloor(e);
+    if (floor > 0 && e.hp <= floor) {
+      e.hp = floor; e.flash = .03;            // бронирован, пока не договорит
+      if (time - e.shieldMsgAt > 12) { e.shieldMsgAt = time; showBanner('Начальник ещё не договорил', 'Дослушай — потом добивай', 1.6); }
+    }
+  }
   const push = e.type === 'runner' ? 7 : (e.boss ? .4 : 2.2);
   if (dir) { e.kx += dir.x * push * (dmg / 12); e.kz += dir.z * push * (dmg / 12); }
   if (e.hp <= 0) killEnemy(e, true);
@@ -1941,6 +1968,13 @@ const LINES = {
 };
 const BOSS_CALLS = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => LINES['bossCall' + i]);
 const BOSS_HITS = [LINES.bossHit1, LINES.bossHit2];
+const BOSS_SCRIPT = [            // порядок реплик Начальника; последний шаг — и его можно добить
+  [LINES.bossSpawn, LINES.heroBoss1],
+  [LINES.bossCall1], [LINES.bossCall2], [LINES.bossCall3], [LINES.bossCall4],
+  [LINES.bossHurt1],
+  [LINES.bossCall5], [LINES.bossCall6], [LINES.bossCall7], [LINES.bossCall8],
+  [LINES.bossHurt2],
+];
 
 // ── шезлонги: занятые полотенцами (стены) и платные (тикают монеты) ──
 const beachMat = {
@@ -2653,6 +2687,7 @@ if (/[?&]debug/.test(location.search)) {
     fire(on = true) { firing = on; },
     weapon: (i) => selectWeapon(i),
     god() { player.hp = 1e9; },
+    ammo() { ammo.shells = 999; ammo.flamingo = 9999; for (const k in ammo) ammo[k] = 9999; },
     snd: () => Snd.debug(),
     voice: () => ({ cur: speechCur && speechCur.line, who: speechCur && speakerOf(speechCur), busy: voiceBusy, scene: speechScene && speechScene.lines.map((l) => l.line), queue: speechQ.map((q) => q.lines.map((l) => l.line).join(' → ')), missing: Object.keys(voiceOk).filter((k) => voiceOk[k] === false) }),
     say: (file) => say(dbgLine(file)),
@@ -2685,7 +2720,7 @@ if (/[?&]debug/.test(location.search)) {
       return { chief: !!e.chief, hp: e.hp };
     },
     bossPose(t) { const e = enemies.find((o) => o.chief); if (e) e.pose = t; },
-    bossInfo: () => { const e = enemies.find((o) => o.boss); return e && { d: +Math.hypot(e.x - player.pos.x, e.z - player.pos.z).toFixed(1), hp: Math.round(e.hp), swing: +(e.swing || 0).toFixed(2) }; },
+    bossInfo: () => { const e = enemies.find((o) => o.boss); return e && { d: +Math.hypot(e.x - player.pos.x, e.z - player.pos.z).toFixed(1), hp: Math.round(e.hp), swing: +(e.swing || 0).toFixed(2), step: e.step, floor: Math.round(bossFloor(e)) }; },
     wave(n) { for (const e of enemies) { e.dead = true; removeEnemyObj(e); } enemies.length = 0; startWave(n); },
     types: () => enemies.map((e) => e.type),
     screams: () => enemies.filter((e) => e.audio && e.audio._owner === e).map((e) => ({ paused: e.audio.paused, vol: +e.audio.volume.toFixed(2), ready: e.audio.readyState, t: +e.audio.currentTime.toFixed(2) })),
