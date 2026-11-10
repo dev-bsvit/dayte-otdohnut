@@ -1907,6 +1907,7 @@ const LINES = {
   cornCall4: L('npc',  null,              'Опять ты? Кукуруза, свежая!'),   // своей озвучки нет — только субтитр
   cornSold:  L('npc',  'npc-corn-sold',   'Кукуруза — триста! Сдачи нет!'),
   cornHero:  L('hero', 'hero-corn',       'Кукуруза за триста? Я же не просил!'),
+  cornHero2: L('hero', 'hero-corn-2',     'У меня своя кукуруза есть!'),
   cornFlee:  L('npc',  'npc-corn-flee',   'Ай, жадный турист!'),
   photoCall: L('npc',  'npc-photo-call',  'Фото с обезьянкой! Улыбаемся!'),
   photoPay:  L('npc',  'npc-photo-pay',   'С вас пятьсот. Обезьянка тоже работает'),
@@ -2241,7 +2242,7 @@ function updateBeach(dt) {
         n.yaw = toward;
         if (d > n.cfg.stop) walk(1, n.cfg.speed);
         else {
-          const reply = time - cornHeroAt > 30 ? LINES.cornHero : null;   // герой огрызается не на каждую продажу
+          const reply = time - cornHeroAt > 30 ? pick([LINES.cornHero, LINES.cornHero2]) : null;   // герой огрызается не на каждую продажу
           if (reply) cornHeroAt = time;
           sayDialog(LINES.cornSold, reply); takeCoins(300);               // продал → ответ героя, одним диалогом
           n.state = 'back'; n.fleeTo = rand(13, 19);
