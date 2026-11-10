@@ -91,9 +91,57 @@ const flashTex = tex(drawCanvas(128, 128, (g, w) => {
   g.fillStyle = c; g.beginPath(); g.arc(0, 0, 26, 0, Math.PI * 2); g.fill();
 }));
 
-const dotTex = tex(drawCanvas(32, 32, (g) => {
-  g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 14, 0, Math.PI * 2); g.fill();
+// Ретро-искра в стиле классических игр 90-х (Doom, Serious Sam, 16-bit аркады):
+// чёткая 4-лучевая пиксельная звезда с раскалённым белым ядром, огненными лучами и без размытия
+const retroSparkTex = tex(drawCanvas(32, 32, (g) => {
+  g.imageSmoothingEnabled = false;
+  const cx = 15.5, cy = 15.5;
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const dx = Math.abs(x - cx), dy = Math.abs(y - cy);
+      const dm = dx + dy;
+      const isCross = (dx <= 1.2 && dy <= 14) || (dy <= 1.2 && dx <= 14);
+      const isDiag = Math.abs(dx - dy) <= 1 && dx <= 6;
+      if (dx <= 2 && dy <= 2) {
+        g.fillStyle = '#ffffff'; g.fillRect(x, y, 1, 1);
+      } else if (dm <= 5 || (isCross && dx <= 4 && dy <= 4)) {
+        g.fillStyle = '#fffa65'; g.fillRect(x, y, 1, 1);
+      } else if (isCross || dm <= 8 || isDiag) {
+        g.fillStyle = '#ff8800'; g.fillRect(x, y, 1, 1);
+      } else if ((dx <= 2 && dy <= 15) || (dy <= 2 && dx <= 15) || dm <= 11) {
+        g.fillStyle = '#d01800'; g.fillRect(x, y, 1, 1);
+      }
+    }
+  }
 }));
+retroSparkTex.magFilter = THREE.NearestFilter;
+retroSparkTex.minFilter = THREE.NearestFilter;
+const dotTex = retroSparkTex;
+
+// Пиксельный огненный шар взрыва в стиле классических шутеров (Doom / Duke Nukem)
+const retroExplosionTex = tex(drawCanvas(64, 64, (g) => {
+  g.imageSmoothingEnabled = false;
+  const cx = 31.5, cy = 31.5;
+  const lobes = [24, 18, 28, 20, 26, 17, 27, 21, 29, 19, 25, 18, 28, 22, 26, 19];
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const dx = x - cx, dy = y - cy;
+      const d = Math.hypot(dx, dy);
+      const theta = ((Math.atan2(dy, dx) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const idx = Math.floor((theta / (Math.PI * 2)) * lobes.length) % lobes.length;
+      const maxR = lobes[idx];
+      if (d <= maxR) {
+        if (d <= 7) g.fillStyle = '#ffffff';
+        else if (d <= maxR * 0.44) g.fillStyle = '#ffee33';
+        else if (d <= maxR * 0.76) g.fillStyle = '#ff6600';
+        else g.fillStyle = '#cc1100';
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}));
+retroExplosionTex.magFilter = THREE.NearestFilter;
+retroExplosionTex.minFilter = THREE.NearestFilter;
 
 const cloudTex = tex(drawCanvas(256, 128, (g) => {
   for (let i = 0; i < 26; i++) {
@@ -417,9 +465,9 @@ for (let i = 0; i < PMAX; i++) pPos[i * 3 + 1] = -9999;
 const pGeo = new THREE.BufferGeometry();
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
 pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
-const pMat = new THREE.PointsMaterial({ size: .3, map: dotTex, alphaTest: .5, vertexColors: true });
+const pMat = new THREE.PointsMaterial({ size: .42, map: dotTex, alphaTest: .18, vertexColors: true, transparent: true });
 pMat.onBeforeCompile = (sh) => {   // у камеры частицы не раздуваются в огромные круги
-  sh.vertexShader = sh.vertexShader.replace('#include <fog_vertex>', 'gl_PointSize = min(gl_PointSize, 22.0);\n#include <fog_vertex>');
+  sh.vertexShader = sh.vertexShader.replace('#include <fog_vertex>', 'gl_PointSize = clamp(gl_PointSize, 5.0, 32.0);\n#include <fog_vertex>');
 };
 const points = new THREE.Points(pGeo, pMat);
 points.frustumCulled = false;
@@ -443,10 +491,20 @@ function updateParticles(dt) {
     if (pLife[i] <= 0) continue;
     pLife[i] -= dt;
     const j = i * 3;
-    pVel[j + 1] -= 16 * dt;
+    pVel[j + 1] -= 18 * dt;   // ретро-гравитация
     pPos[j] += pVel[j] * dt; pPos[j + 1] += pVel[j + 1] * dt; pPos[j + 2] += pVel[j + 2] * dt;
     const g = H(pPos[j], pPos[j + 2]);
-    if (pPos[j + 1] < g) { pPos[j + 1] = g; pVel[j] *= .4; pVel[j + 1] *= -.2; pVel[j + 2] *= .4; }
+    if (pPos[j + 1] < g) {
+      pPos[j + 1] = g;
+      pVel[j] *= .65;
+      pVel[j + 1] = Math.abs(pVel[j + 1]) * .38;   // отскок искр от песка
+      pVel[j + 2] *= .65;
+    }
+    // Ретро-остывание огненных искр: желтый -> оранжевый -> темно-красный -> дым
+    if (pCol[j] > 0.4) {
+      pCol[j + 1] = Math.max(0, pCol[j + 1] - dt * 0.85);
+      pCol[j + 2] = Math.max(0, pCol[j + 2] - dt * 1.6);
+    }
     if (pLife[i] <= 0) pPos[j + 1] = -9999;
   }
   pGeo.attributes.position.needsUpdate = true;
@@ -455,13 +513,24 @@ function updateParticles(dt) {
 
 const blasts = [];
 for (let i = 0; i < 10; i++) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: retroExplosionTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
   s.visible = false; scene.add(s);
   blasts.push({ s, t: 0, dur: 1, size: 1 });
 }
 function blast(x, y, z, size = 7, dur = .45) {
   const b = blasts.find((b) => !b.s.visible) || blasts[0];
   b.s.position.set(x, y, z); b.s.visible = true; b.t = 0; b.dur = dur; b.size = size;
+  b.s.material.rotation = rand(0, Math.PI * 2);
+}
+
+// Пакет ретро-искр и взрыва в стиле классических шутеров (Doom / Serious Sam)
+function emitExplosion(x, y, z, isBoss = false) {
+  blast(x, y, z, isBoss ? 22 : 8.5, isBoss ? .75 : .48);
+  const n = isBoss ? 160 : 75;
+  // 1. Быстрые радиальные пиксельные искры во все стороны
+  emit(x, y, z, Math.floor(n * 0.6), ['#ffffff', '#fff952', '#ffaa00', '#ff5500', '#ff2200'], isBoss ? 20 : 14, isBoss ? 7 : 4, isBoss ? 1.4 : 0.95);
+  // 2. Дуговые искры-осколки, взлетающие вверх и отскакивающие от земли
+  emit(x, y, z, Math.floor(n * 0.4), ['#ffe033', '#ff7700', '#d81800', '#ff3300', '#3a2010'], isBoss ? 12 : 8, isBoss ? 14 : 9, isBoss ? 1.8 : 1.3);
 }
 let activeBlasts = 0;
 function updateBlasts(dt) {
@@ -679,7 +748,7 @@ const RG = {
   bomb: new THREE.IcosahedronGeometry(.16, 1),
   fuse: new THREE.CylinderGeometry(.016, .016, .12, 5),
 };
-const sparkMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+const sparkMat = new THREE.SpriteMaterial({ map: retroSparkTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
 
 function makeRunnerMesh() {
   const g = new THREE.Group();
@@ -798,6 +867,92 @@ function makeKamikaze() {
   const sparks = hands.map(() => { const s = new THREE.Sprite(sparkMat); s.scale.set(.3, .3, 1); scene.add(s); return s; });
   return { g, mats, mixer, action, hands, sparks, external: true };
 }
+/* Финальный босс — Начальник: модель models/boss.glb (своя модель → скелет и движения Magnific → Blender).
+   Анимации «run» (тяжёлый бег на месте) и «attack» (удар двумя руками сверху). */
+let BOSS = null;
+const BOSS_HEIGHT = 5.4;          // рост в игре, м
+const BOSS_FACE = Math.PI / 2;     // куда смотрит лицо модели: угол от +Z к +X (у этой — вдоль +X)
+const BOSS_STEPS = .85;           // шагов-циклов в секунду (два шага на цикл)
+async function loadBoss() {
+  const gltf = await parseGLB('boss');
+  if (!gltf || !THREE.SkeletonUtils) return null;
+  const box = new THREE.Box3();
+  gltf.scene.traverse((o) => { if (o.isSkinnedMesh) { o.geometry.computeBoundingBox(); box.union(o.geometry.boundingBox); } });
+  const h = box.max.y - box.min.y;
+  return { scene: gltf.scene, scale: BOSS_HEIGHT / h, minY: box.min.y };
+}
+function makeBoss() {
+  const g = new THREE.Group();
+  const inner = THREE.SkeletonUtils.clone(BOSS.scene);
+  inner.scale.setScalar(BOSS.scale);
+  inner.position.y = -BOSS.minY * BOSS.scale;
+  inner.rotation.y = Math.PI - BOSS_FACE;   // лицом к −Z игры (сама модель смотрит вдоль +X)
+  g.add(inner);
+  const mats = [];
+  inner.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); mats.push(o.material); o.frustumCulled = false; } });
+  /* Движения Meshy на этой фигуре (огромный торс, короткие ноги) складывали её пополам,
+     поэтому шаг и удар собираем сами из позы покоя: каждой кости — поворот вокруг осей модели. */
+  g.updateMatrixWorld(true);
+  const qInner = inner.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const bone = (name) => {
+    const b = inner.getObjectByName(name);
+    if (!b) return null;
+    const q = qInner.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())).invert();   // модель → кость
+    // плюс вокруг оси side — наклон вперёд, сгиб колена назад
+    const side = new THREE.Vector3(-Math.cos(BOSS_FACE), 0, Math.sin(BOSS_FACE)), fwd = new THREE.Vector3(Math.sin(BOSS_FACE), 0, Math.cos(BOSS_FACE));
+    return { b, rest: b.quaternion.clone(), x: side.applyQuaternion(q), y: new THREE.Vector3(0, 1, 0).applyQuaternion(q), z: fwd.applyQuaternion(q) };
+  };
+  const names = ['Hips', 'Spine', 'Spine02', 'Head', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg', 'LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm'];
+  const bones = {};
+  for (const n of names) bones[n] = bone(n);
+  return { g, inner, mats, bones, baseY: inner.position.y, phase: 0, external: true, sparks: [] };
+}
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
+function poseBone(k, ax, ay = 0, az = 0) {        // поворот кости от позы покоя вокруг осей модели (X — вбок, Y — вверх, Z — вперёд)
+  if (!k) return;
+  k.b.quaternion.copy(k.rest);
+  if (ax) k.b.quaternion.multiply(_qa.setFromAxisAngle(k.x, ax));
+  if (ay) k.b.quaternion.multiply(_qb.setFromAxisAngle(k.y, ay));
+  if (az) k.b.quaternion.multiply(_qa.setFromAxisAngle(k.z, az));
+}
+const ease = (t) => t * t * (3 - 2 * t);
+function animateBoss(e, dt, moving) {
+  const m = e.rig, B = m.bones;
+  if (moving) m.phase += dt * Math.PI * 2 * BOSS_STEPS;      // тяжёлый шаг
+  const p = m.phase, s = Math.sin(p), c = Math.cos(p);
+  const w = moving ? 1 : .25;                                   // стоит — почти не качается
+  // атака: 0..1 — замах вверх, удар вниз, возврат
+  let armUp = 0, lean = 0;
+  if (e.swing > 0) {
+    const t = 1 - e.swing / e.swingDur;
+    // торс модели сильно привязан к плечам — руки высоко не поднимаем, удар делаем корпусом:
+    // откинулся назад → рухнул вперёд всем телом, руки — небольшим взмахом
+    if (t < .5) { const k = ease(t / .5); armUp = -.55 * k; lean = -.22 * k; }
+    else if (t < .62) { const k = ease((t - .5) / .12); armUp = -.55 + .75 * k; lean = -.22 + .62 * k; }
+    else { const k = ease((t - .62) / .38); armUp = .2 * (1 - k); lean = .4 * (1 - k); }
+  }
+  const atk = e.swing > 0 ? 1 : 0;
+  poseBone(B.LeftUpLeg, -s * .42 * w);
+  poseBone(B.RightUpLeg, s * .42 * w);
+  poseBone(B.LeftLeg, (.12 + Math.max(0, Math.sin(p - 1.3)) * .75) * w);
+  poseBone(B.RightLeg, (.12 + Math.max(0, -Math.sin(p - 1.3)) * .75) * w);
+  poseBone(B.LeftArm, atk ? armUp : s * .38 * w, 0, atk ? 0 : -.05);
+  poseBone(B.RightArm, atk ? armUp : -s * .38 * w, 0, atk ? 0 : .05);
+  poseBone(B.LeftForeArm, atk ? -.25 : -.35 - Math.max(0, s) * .3 * w);
+  poseBone(B.RightForeArm, atk ? -.25 : -.35 - Math.max(0, -s) * .3 * w);
+  poseBone(B.Spine, (.1 + lean) * (atk || moving ? 1 : .6), s * .1 * w);
+  poseBone(B.Spine02, lean * .6, s * .06 * w);
+  poseBone(B.Head, -lean * .5 - .05, -s * .08 * w);
+  poseBone(B.Hips, 0, -s * .06 * w, c * .05 * w);
+  m.inner.position.y = m.baseY + Math.abs(c) * .22 * w - (atk ? Math.max(0, lean) * .25 : 0);
+  // шаг касается земли — дрожь (сильнее, если рядом)
+  const step = Math.sign(s);
+  if (moving && step !== m.lastStep) {
+    m.lastStep = step;
+    const d = Math.hypot(player.pos.x - e.x, player.pos.z - e.z);
+    if (d < 28) shake = Math.max(shake, .25 * (1 - d / 28));
+  }
+}
 function removeEnemyObj(e) {
   scene.remove(e.obj);
   if (e.rig && e.rig.external) for (const s of e.rig.sparks) scene.remove(s);
@@ -812,7 +967,8 @@ function animateRunner(e, dt) {
     m.hands.forEach((hand, i) => {
       hand.getWorldPosition(handPos);
       m.sparks[i].position.set(handPos.x, handPos.y + .34 * k, handPos.z);
-      const s = rand(.2, .4) * k; m.sparks[i].scale.set(s, s, 1);
+      const s = rand(.22, .46) * k; m.sparks[i].scale.set(s, s, 1);
+      m.sparks[i].material.rotation = rand(0, Math.PI * 2);
     });
     return;
   }
@@ -826,7 +982,11 @@ function animateRunner(e, dt) {
   m.body.position.y = .98 + Math.abs(c) * .09;
   m.body.rotation.x = -.2;
   m.body.rotation.z = s * .05;
-  for (const sp of m.sparks) { const k = rand(.18, .38); sp.scale.set(k, k, 1); }
+  for (const sp of m.sparks) {
+    const k = rand(.22, .46);
+    sp.scale.set(k, k, 1);
+    if (sp.material) sp.material.rotation = rand(0, Math.PI * 2);
+  }
 }
 
 const swanMat = {
@@ -919,7 +1079,7 @@ const WAVE_TITLES = [
   'Лебеди требуют прописку',
   'Очередь в МФЦ',
   'ЖЭК наносит ответный удар',
-  'Главный лебедь района',
+  'Начальник на связи',
   'Обед до 14:00',
   'Опять не та печать',
   'Собрание ТСЖ',
@@ -1112,14 +1272,14 @@ function pump() {                        // следующая сцена из �
 }
 function speakerOf(item) {
   if (item.by) return item.by;
-  if (item.who !== 'npc') return SPEAKER.hero;
+  if (!item.who || item.who === 'hero') return SPEAKER.hero;   // у предметов сборов who не задан — это герой
   const k = Object.keys(SPEAKER).find((key) => item.file && item.file.includes(key));
   return SPEAKER[k] || 'Отдыхающий';
 }
 function playLine(item) {
   speechCur = item;
-  speechImg.src = item.who === 'npc' ? 'assets/hustler-face.png' : 'assets/hero-face.png';
-  speech.classList.toggle('is-npc', item.who === 'npc');
+  speechImg.src = item.face || (item.who === 'npc' ? 'assets/hustler-face.png' : 'assets/hero-face.png');
+  speech.classList.toggle('is-npc', item.who === 'npc' || item.who === 'boss');
   speechWho.textContent = speakerOf(item);
   speechText.textContent = `«${item.line}»`;
   speech.classList.remove('is-open'); void speech.offsetWidth;   // новая реплика — пузырь заново «выезжает»
@@ -1416,7 +1576,7 @@ function updateWaves(dt) {
     if (!spawnQueue.length && !enemies.length) {
       if (wave >= 5) {
         waveState = 'won';
-        waveT = 2.4;
+        waveT = 5;                       // успеть дослушать последние слова начальника
         player.hp = 100;
         showBanner('ИГРА ПРОЙДЕНА!', 'Все 5 уровней позади. Отпуск ваш!', 3.2);
         Snd.win();
@@ -1454,6 +1614,12 @@ function spawnEnemy(type, x, z) {
     const rig = KAMI ? makeKamikaze() : makeRunnerMesh();
     rig.g.scale.setScalar(rand(.98, 1.1));
     e = { obj: rig.g, rig, mats: rig.mats || [rig.skin], hp: 28 + wave * 2.5, speed: Math.min(6.2 + wave * .3, 10) * rand(.88, 1.12), r: .6, screamed: false, run: rand(0, 6), score: 100 };
+  } else if (type === 'boss' && BOSS) {
+    const rig = makeBoss();
+    e = { obj: rig.g, rig, mats: rig.mats, boss: true, chief: true, sc: 1, hp: 900 + wave * 60, speed: 4.6, r: 1.3,
+      attackCd: 1.5, swing: 0, swingDur: 1.35, callT: 6, said50: false, said20: false, score: 3000 };
+    showBanner('Начальник отдела', 'Звонит прямо в отпуск. Не бери трубку!', 3);
+    sayDialog(LINES.bossSpawn, LINES.heroBoss1);
   } else {
     const boss = type === 'boss';
     const m = makeSwanMesh(boss);
@@ -1486,6 +1652,8 @@ function updateEnemies(dt) {
       if (!e.screamed && d < 30) { e.screamed = true; e.audio = Snd.screamStart(e, clamp(1.15 - d / 30, .3, 1)); }
       if (e.audio) Snd.screamVol(e.audio, e, clamp(1.15 - d / 30, .3, 1));
       if (d < 1.55) { killEnemy(e, false); continue; }
+    } else if (e.chief) {
+      updateChief(e, dt, d, ux, uz);
     } else {
       e.hopT += dt * (e.boss ? 3.2 : 5.5);
       const ph = Math.abs(Math.sin(e.hopT));
@@ -1523,11 +1691,43 @@ function updateEnemies(dt) {
 
     if (e.flash > 0) {
       e.flash -= dt;
-      if (e.type === 'runner') for (const m of e.mats) m.emissive.setScalar(e.flash > 0 ? e.flash * 6 : 0);
+      if (e.type === 'runner' || e.chief) for (const m of e.mats) m.emissive.setScalar(e.flash > 0 ? e.flash * (e.chief ? 3 : 6) : 0);
     }
     e.y = H(e.x, e.z);
     e.obj.position.set(e.x, e.y + hop, e.z);
   }
+}
+
+function updateChief(e, dt, d, ux, uz) {
+  const reach = 6.5;                          // бьёт издалека ударной волной — так он виден в кадре целиком
+  e.obj.rotation.y = Math.atan2(-ux, -uz);
+  if (e.pose != null) { e.swing = e.swingDur * (1 - e.pose); animateBoss(e, 0, false); return; }   // отладка: замереть в фазе удара
+  e.attackCd -= dt;
+  let moving = false;
+  if (e.swing > 0) {                          // удар двумя руками сверху; урон — в момент удара о землю
+    e.swing -= dt;
+    if (!e.hitDone && e.swing <= e.swingDur * .42) {
+      e.hitDone = true;
+      shake = Math.max(shake, .6);
+      Snd.boom(.5);
+      const fx = -Math.sin(e.obj.rotation.y), fz = -Math.cos(e.obj.rotation.y);
+      for (let k = 1; k <= 3; k++) emit(e.x + fx * 2.2 * k, e.y + .2, e.z + fz * 2.2 * k, 30, ['#d8c39a', '#b89a66', '#8a7450'], 7, 3, .9);   // волна пыли к игроку
+      const dp = Math.hypot(player.pos.x - e.x, player.pos.z - e.z);
+      if (dp < reach + 1.5) { hurtPlayer(18); if (Math.random() < .5) say(pick(BOSS_HITS)); }
+    }
+  } else if (d > reach) {
+    moving = true;
+    e.x += ux * e.speed * dt; e.z += uz * e.speed * dt;
+  } else if (e.attackCd <= 0) {
+    e.attackCd = 2.4; e.hitDone = false;
+    e.swing = e.swingDur = 1.35;
+  }
+  animateBoss(e, dt, moving);
+  // реплики: звонит по ходу боя, жалуется на ранениях
+  e.callT -= dt;
+  if (e.callT <= 0) { e.callT = rand(7, 10); say(pick(BOSS_CALLS)); }
+  if (!e.said50 && e.hp < e.maxHp * .5) { e.said50 = true; say(LINES.bossHurt1); }
+  if (!e.said20 && e.hp < e.maxHp * .2) { e.said20 = true; say(LINES.bossHurt2); }
 }
 
 function pushOut(o, r) {
@@ -1541,6 +1741,10 @@ function hitSpheres(e) {
   if (e.type === 'runner') {
     const p = e.obj.position, k = e.obj.scale.x;
     return [[p.x, p.y + 1.4 * k, p.z, .5 * k], [p.x, p.y + .7 * k, p.z, .4 * k], [p.x, p.y + 2.15 * k, p.z, .45 * k]];
+  }
+  if (e.chief) {
+    const p = e.obj.position, H0 = BOSS_HEIGHT;
+    return [[p.x, p.y + .28 * H0, p.z, .2 * H0], [p.x, p.y + .55 * H0, p.z, .24 * H0], [p.x, p.y + .8 * H0, p.z, .2 * H0]];
   }
   const s = e.sc, fx = -Math.sin(e.obj.rotation.y), fz = -Math.cos(e.obj.rotation.y), p = e.obj.position;
   return [[p.x, p.y + .6 * s, p.z, .78 * s], [p.x + fx * .55 * s, p.y + 1.7 * s, p.z + fz * .55 * s, .38 * s], [p.x + fx * .45 * s, p.y + 1.2 * s, p.z + fz * .45 * s, .3 * s]];
@@ -1565,8 +1769,7 @@ function killEnemy(e, byPlayer) {
   const x = e.x, y = e.y, z = e.z;
 
   if (e.type === 'runner') {
-    blast(x, y + 1.2, z, 8, .5);
-    emit(x, y + 1.2, z, 60, ['#ffcc55', '#ff7a1a', '#ffe9a8', '#3a3a3a', '#5d6b45'], 11, 5, .9);
+    emitExplosion(x, y + 1.2, z, false);
     const dp = Math.hypot(player.pos.x - x, player.pos.z - z);
     Snd.kamikazeBoom(clamp(1.1 - dp / 60, .25, 1));
     shake = Math.max(shake, clamp(1 - dp / 25, 0, 1) * .6);
@@ -1576,12 +1779,18 @@ function killEnemy(e, byPlayer) {
       const od = Math.hypot(o.x - x, o.z - z);
       if (od < 5.5) setTimeout(() => damageEnemy(o, 75 * (1 - od / 5.5) + 15, { x: (o.x - x) / (od || 1), z: (o.z - z) / (od || 1) }), 70 + od * 25);
     }
+  } else if (e.chief) {
+    emit(x, y + 2.5, z, 220, ['#6b4a6e', '#8c6a8f', '#3b2a3d', '#f4e6b8'], 14, 5, 1.4);   // клочья и бумажки
+    emit(x, y + 3, z, 120, ['#ffffff', '#f2efe6'], 10, 2, 2.2);
+    emitExplosion(x, y + 3, z, true); Snd.boom(1); shake = .9;
+    showBanner('Начальник повержен', 'Телефон в авиарежим. Отпуск спасён', 3);
+    sayDialog(LINES.bossDead, LINES.heroBoss2);
   } else {
     const n = e.boss ? 180 : 55;
     emit(x, y + 1 * e.sc, z, n, ['#ffffff', '#f1eee6', '#dcd7cc'], e.boss ? 14 : 8, 4, 1.3);
     emit(x, y + .3 * e.sc, z, n / 2, ['#1d1d20', '#2b2b30'], e.boss ? 12 : 7, 5, 1);
     Snd.pop();
-    if (e.boss) { blast(x, y + 3, z, 22, .8); Snd.boom(1); shake = .8; showBanner('Главный лебедь повержен', 'Район свободен. До следующего собрания', 2.6); }
+    if (e.boss) { emitExplosion(x, y + 3, z, true); Snd.boom(1); shake = .8; showBanner('Главный лебедь повержен', 'Район свободен. До следующего собрания', 2.6); }
   }
 
   if (byPlayer) {
@@ -1690,6 +1899,7 @@ function updatePickups(dt) {
 
 // реплики: line — субтитр, file — assets/voice/<file>.mp3 (нет файла — только субтитр), who — чьё лицо в реплике
 const L = (who, file, line) => ({ who, file, line });
+const B = (file, line) => ({ who: 'boss', by: 'Начальник', face: 'assets/boss-face.png', file, line, prio: 2 });
 const LINES = {
   cornCall:  L('npc',  'npc-corn-call',   'Кукуруза! Пахлава! Чурчхела!'),
   cornCall2: L('npc',  'npc-corn-call-2', 'Горячая кукуруза! Холодное пиво!'),
@@ -1710,7 +1920,26 @@ const LINES = {
   animSad:   L('npc',  'npc-anim-sad',    'Ну и ладно. Пойду в соседний отель'),
   towel:     L('hero', 'hero-towel',      'Занято с шести утра. Классика'),
   paid:      L('hero', 'hero-paid',       'Полторы тысячи за шезлонг?! Я лучше на полотенце'),
+  // финальный босс — Начальник
+  bossSpawn: B('boss-spawn',  'О, ты в отпуске? Отлично, значит, есть время!'),
+  heroBoss1: L('hero', 'hero-boss-1',     'Меня нет! Я в отпуске!'),
+  bossCall1: B('boss-call-1', 'Есть минутка? Буквально пять минут!'),
+  bossCall2: B('boss-call-2', 'Глянь почту, там срочное'),
+  bossCall3: B('boss-call-3', 'Маленькая правочка. Ты же всё равно на пляже'),
+  bossCall4: B('boss-call-4', 'Ноутбук с собой взял? Вот и славно'),
+  bossCall5: B('boss-call-5', 'Созвон в девять. По нашему времени'),
+  bossCall6: B('boss-call-6', 'Отчёт нужен к утру. К вчерашнему'),
+  bossCall7: B('boss-call-7', 'Я твой отпуск подписывал? Не помню'),
+  bossCall8: B('boss-call-8', 'Клиент хочет, как было в первой версии'),
+  bossHit1:  B('boss-hit-1',  'Это тебе за дедлайн!'),
+  bossHit2:  B('boss-hit-2',  'Минус премия!'),
+  bossHurt1: B('boss-hurt-1', 'Ладно, ладно! Только отчёт пришли!'),
+  bossHurt2: B('boss-hurt-2', 'Я это в KPI запишу!'),
+  bossDead:  B('boss-dead',   'Хорошо… Отдыхай… В понедельник поговорим'),
+  heroBoss2: L('hero', 'hero-boss-2',     'Алло? Пропадаю! Связь плохая!'),
 };
+const BOSS_CALLS = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => LINES['bossCall' + i]);
+const BOSS_HITS = [LINES.bossHit1, LINES.bossHit2];
 
 // ── шезлонги: занятые полотенцами (стены) и платные (тикают монеты) ──
 const beachMat = {
@@ -2449,6 +2678,13 @@ if (/[?&]debug/.test(location.search)) {
     },
     play() { autoPause = false; setState('playing'); },
     win: () => winGame(),
+    boss(dist = 25) {   // поставить Начальника перед игроком
+      spawnEnemy('boss', player.pos.x - Math.sin(player.yaw) * dist, player.pos.z - Math.cos(player.yaw) * dist);
+      const e = enemies[enemies.length - 1];
+      return { chief: !!e.chief, hp: e.hp };
+    },
+    bossPose(t) { const e = enemies.find((o) => o.chief); if (e) e.pose = t; },
+    bossInfo: () => { const e = enemies.find((o) => o.boss); return e && { d: +Math.hypot(e.x - player.pos.x, e.z - player.pos.z).toFixed(1), hp: Math.round(e.hp), swing: +(e.swing || 0).toFixed(2) }; },
     wave(n) { for (const e of enemies) { e.dead = true; removeEnemyObj(e); } enemies.length = 0; startWave(n); },
     types: () => enemies.map((e) => e.type),
     screams: () => enemies.filter((e) => e.audio && e.audio._owner === e).map((e) => ({ paused: e.audio.paused, vol: +e.audio.volume.toFixed(2), ready: e.audio.readyState, t: +e.audio.currentTime.toFixed(2) })),
@@ -2467,6 +2703,7 @@ if (/[?&]debug/.test(location.search)) {
     [...TRIP_ITEMS, TRIP_DONE, ...Object.values(LINES), ...FOOD.map((f) => f.line)].forEach((l) => probeVoice(l.file));
     KAMI = await loadKamikaze();
     HUST = await loadHustler();
+    BOSS = await loadBoss();
     DANCER = await loadDancer();
     const [suit, flam] = await Promise.all([parseGLB('suitcase'), parseGLB('flamingo')]);
     if (suit) swapWeapon(0, weaponFromGLB(suit, { size: .6, pos: [.34, -.3, -.78], yaw: .32, flash: .3 }));
