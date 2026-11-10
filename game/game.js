@@ -8,7 +8,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const isTouch = matchMedia('(pointer: coarse)').matches;
+const isTouch = matchMedia('(pointer: coarse)').matches || /[?&]touch/.test(location.search);   // ?touch — проверить мобильное управление на компьютере
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
 if (isTouch) document.body.classList.add('is-touch');
@@ -199,6 +199,24 @@ const Snd = (() => {
     a.addEventListener('error', onError);
     return a;
   }
+  /* Громкость файлов. iPhone не даёт странице менять volume у <audio> (там всегда 1),
+     поэтому на нём звук идёт через GainNode. На компьютере — как раньше, через volume
+     (так работает и при открытии с диска). ?gainvol — проверить «айфонный» путь на компьютере. */
+  const VOL_OK = (() => { try { const a = new Audio(); a.volume = .5; return a.volume === .5; } catch (e) { return true; } })()
+    && !/[?&]gainvol/.test(location.search);
+  function setVol(a, v) {
+    v = clamp(v, 0, 1);
+    a._vol = v;
+    if (VOL_OK) { a.volume = v; return; }
+    if (!ctx || a._gainFail) return;
+    if (!a._gain) {
+      try { a._gain = ctx.createGain(); ctx.createMediaElementSource(a).connect(a._gain); a._gain.connect(ctx.destination); }
+      catch (e) { a._gain = null; a._gainFail = true; return; }
+    }
+    a._gain.gain.value = v;
+  }
+  // звук идёт через Web Audio — он должен играть и при беззвучном режиме, и после сворачивания
+  addEventListener('pointerdown', () => { if (ctx && ctx.state !== 'running') ctx.resume(); }, true);
   function unlock(a) {                 // iOS: первый play() должен быть по нажатию
     if (a._unlocked) return;
     a._unlocked = true; a.muted = true;
@@ -218,6 +236,7 @@ const Snd = (() => {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}   // iPhone: не глушить переключателем «без звука»
     master = ctx.createGain(); master.gain.value = .5; master.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
@@ -254,13 +273,14 @@ const Snd = (() => {
       a._owner = owner;
       a.muted = false;
       a.currentTime = 0;
-      a.volume = clamp(v, 0, 1);
+      setVol(a, v);
       const p = a.play();
       if (p && p.catch) p.catch(() => { a._owner = null; });
       a.onended = () => { a._owner = null; };
       return a;
     },
-    screamVol(a, owner, v) { if (a && a._owner === owner) a.volume = clamp(v * (voiceBusy ? .45 : 1), 0, 1); },
+    screamVol(a, owner, v) { if (a && a._owner === owner) setVol(a, v * (voiceBusy ? .45 : 1)); },
+    vol: setVol,
     screamStop(a, owner) { if (a && a._owner === owner) { a.pause(); a._owner = null; } },
     screamStopAll() { for (const a of pool) { a.pause(); a._owner = null; } },
     shotgun() { noise(.5, 2600, 260, .9); tone('sine', 120, 38, .3, .9); },
@@ -303,7 +323,7 @@ const Snd = (() => {
       if (!a) { this.boom(v); return; }
       a.muted = false;
       a.currentTime = 0;
-      a.volume = clamp(v, 0, 1);
+      setVol(a, v);
       const p = a.play();
       if (p && p.catch) p.catch(() => {});
     },
@@ -315,7 +335,7 @@ const Snd = (() => {
       if (muted) return;
       const a = honkOk && honks.find((x) => x._unlocked && (x.paused || x.ended));
       if (!a) { if (!honkOk) this.honkSynth(v); return; }   // все три уже гогочут — пропускаем
-      a.muted = false; a.currentTime = 0; a.volume = clamp(v, 0, 1);
+      a.muted = false; a.currentTime = 0; setVol(a, v);
       const p = a.play(); if (p && p.catch) p.catch(() => {});
     },
     pop() { noise(.25, 3000, 400, .35, 'bandpass', 2); },
@@ -1046,6 +1066,7 @@ let state = 'loading';                     // loading | menu | playing | paused 
 let waveState = 'idle', waveT = 0, spawnT = 0, spawnQueue = [];
 let shake = 0, hurtA = 0, fireCd = 0, spin = 0, kick = 0, switchT = 0, pumpT = 0;
 let swayX = 0, swayY = 0, bobT = 0, firing = false, jumpReq = false;
+let autoFire = false, lookDragAt = -99;   // автоприцел на телефоне
 const enemies = [], pickups = [];
 let tripLeft = [], tripGot = 0;
 
@@ -1158,8 +1179,10 @@ if (isTouch) {
       stick.id = e.pointerId; stick.x = e.clientX; stick.y = e.clientY;
       stickEl.style.left = e.clientX + 'px'; stickEl.style.top = e.clientY + 'px';
       stickEl.classList.add('is-on');
+      try { layer.setPointerCapture(e.pointerId); } catch (err) {}
     } else if (lookP.id === null) {
       lookP.id = e.pointerId; lookP.x = e.clientX; lookP.y = e.clientY;
+      try { layer.setPointerCapture(e.pointerId); } catch (err) {}
     }
   });
   layer.addEventListener('pointermove', (e) => {
@@ -1171,12 +1194,14 @@ if (isTouch) {
     } else if (e.pointerId === lookP.id) {
       look((e.clientX - lookP.x) * .0055, (e.clientY - lookP.y) * .0055);
       lookP.x = e.clientX; lookP.y = e.clientY;
+      lookDragAt = time;
     }
   });
   const end = (e) => {
     if (e.pointerId === stick.id) {
       stick.id = null; touchMove.x = touchMove.y = touchMove.len = 0;
       knob.style.transform = ''; stickEl.classList.remove('is-on');
+      stickEl.style.left = stickEl.style.top = '';      // обратно в угол, как подсказка
     }
     if (e.pointerId === lookP.id) lookP.id = null;
   };
@@ -2154,12 +2179,13 @@ const CORN_CALLS = [LINES.cornCall, LINES.cornCall2, LINES.cornCall3, LINES.corn
 // музыка аниматора — ваш трек, громкость по расстоянию
 const music = new Audio('assets/voice/animator-music.m4a');
 music.loop = true; music.preload = 'auto'; music.volume = 0;
-let musicOn = false;
+let musicOn = false, musicVol = 0;   // musicVol — текущая громкость колонки (саму её ставит Snd.vol)
 function musicPlay() { if (Snd.isMuted()) return; const p = music.play(); if (p && p.catch) p.catch(() => {}); musicOn = true; }
 function musicPause() { music.pause(); musicOn = false; }
 function unlockMusic() {
   if (music._unlocked) return;
   music._unlocked = true; music.muted = true;
+  Snd.vol(music, 0);
   const p = music.play();
   const done = () => { music.muted = false; if (!musicOn) music.pause(); };   // игра уже включила музыку — не глушим
   if (p && p.then) p.then(done).catch(done); else done();
@@ -2301,7 +2327,8 @@ function updateBeach(dt) {
       // громкость: рядом громко, далеко — тихо, но слышно
       const vol = n.speaker ? .05 + .95 * Math.pow(clamp(1 - d / 55, 0, 1), 2) : 0;
       const duck = voiceBusy ? .3 : 1;                // на время реплики музыку приглушаем
-      music.volume += (vol * duck - music.volume) * Math.min(1, dt * 4);
+      musicVol += (vol * duck - musicVol) * Math.min(1, dt * 4);
+      Snd.vol(music, musicVol);
       if (music.paused && state === 'playing' && !Snd.isMuted()) musicPlay();
     } else {
       // гости: фотограф и листовки
@@ -2420,7 +2447,7 @@ function closeAd(ad) {
 }
 function clearBeach() {
   for (const n of npcs.slice()) removeNpc(n);
-  musicPause(); music.volume = 0;
+  musicPause(); musicVol = 0; Snd.vol(music, 0);
   visitor.timer = 14; visitor.next = 'photo';
   adsEl.innerHTML = '';
   monkeyT = 0; monkeyEl.classList.remove('is-on');
@@ -2527,6 +2554,44 @@ function hitscan(o, d, range) {
   return { t: best, enemy, solid, npc: npcHit };
 }
 
+/* Автоприцел для телефона. Прицел сам доводится на ближайшего врага в секторе обзора,
+   а когда враг на мушке и достаточно близко — оружие стреляет само. Пальцем прицел можно увести:
+   пока идёт свайп, доводка втрое слабее. Чем ближе враг, тем шире сектор захвата:
+   дальше 35 м — только рядом с прицелом, до 35 м — вся передняя полусфера, до 18 м — со всех сторон
+   (на телефоне быстро развернуться пальцем нельзя, а безголовые набегают и сзади). */
+const AUTO_RANGE = [18, 60];          // с какого расстояния стрелять самому: чемодан, фламинго
+const aimFwd = V(0, 0, 0);
+function aimAssist(dt) {
+  autoFire = false;
+  const ex = player.pos.x, ey = player.pos.y + EYE, ez = player.pos.z;
+  const setFwd = () => { const cp = Math.cos(player.pitch); aimFwd.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp); };
+  setFwd();
+  let best = null, bestScore = 1e9, bx = 0, by = 0, bz = 0;
+  for (const e of enemies) {
+    const c = hitSpheres(e)[e.chief ? 1 : 0];
+    const dx = c[0] - ex, dy = c[1] - ey, dz = c[2] - ez, d = Math.hypot(dx, dy, dz);
+    if (d > 70 || d < .5) continue;
+    const ang = Math.acos(clamp((dx * aimFwd.x + dy * aimFwd.y + dz * aimFwd.z) / d, -1, 1));
+    if (d >= 18 && ang > (d < 35 ? 1.1 : .5)) continue;
+    const score = d < 18 ? d * .02 : 1 + ang + d * .012;   // сначала ближайшая угроза, потом — кто ближе к прицелу
+    if (score < bestScore) { bestScore = score; best = e; bx = dx; by = dy; bz = dz; }
+  }
+  crosshair.classList.toggle('is-lock', !!best);
+  if (!best) return;
+  let dyaw = Math.atan2(-bx, -bz) - player.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  const dpitch = Math.atan2(by, Math.hypot(bx, bz)) - player.pitch;
+  const off = Math.hypot(dyaw, dpitch);
+  if (off > 1e-4) {
+    const near = Math.hypot(bx, bz) < 18;                // к близкой угрозе разворачивается быстрее
+    const rate = clamp(off * 8, .8, near ? 7 : 4) * (time - lookDragAt < .25 ? .35 : 1) * dt;
+    const f = Math.min(1, rate / off);
+    player.yaw += dyaw * f; player.pitch = clamp(player.pitch + dpitch * f, -1.45, 1.45);
+    setFwd();
+  }
+  ray.o.set(ex, ey, ez);
+  autoFire = !!hitscan(ray.o, aimFwd, AUTO_RANGE[cur]).enemy;
+}
+
 function fire() {
   const W = WEAPONS[cur];
   if (ammo[W.ammo] <= 0) {
@@ -2586,8 +2651,9 @@ function selectWeapon(i, instant) {
 function updateWeapon(dt) {
   const W = WEAPONS[cur], m = W.model;
   fireCd -= dt;
-  if (cur === 1) spin = firing ? Math.min(1, spin + dt * 4) : Math.max(0, spin - dt * 1.5);
-  if (firing && fireCd <= 0 && switchT <= 0 && (cur === 0 || spin > .55)) fire();
+  const trigger = firing || autoFire;
+  if (cur === 1) spin = trigger ? Math.min(1, spin + dt * 4) : Math.max(0, spin - dt * 1.5);
+  if (trigger && fireCd <= 0 && switchT <= 0 && (cur === 0 || spin > .55)) fire();
 
   kick = Math.max(0, kick - dt * (cur === 0 ? 4.5 : 9));
   switchT = Math.max(0, switchT - dt);
@@ -2624,6 +2690,7 @@ function tick(dt) {
   if (state === 'playing') {
     time += dt;
     updatePlayer(dt);
+    if (isTouch) aimAssist(dt);
     updateWeapon(dt);
     updateEnemies(dt);
     updatePickups(dt);
@@ -2696,7 +2763,7 @@ if (/[?&]debug/.test(location.search)) {
     silent() { voice.muted = true; music.muted = true; },
     npc(kind) { let n = npcs.find((m) => m.kind === kind); if (!n) n = spawnNpc(kind); if (kind !== 'animator') { n.x = player.pos.x - Math.sin(player.yaw) * 8; n.z = player.pos.z - Math.cos(player.yaw) * 8; n.state = 'come'; } return n.kind; },
     npcInfo: () => npcs.map((n) => ({ kind: n.kind, state: n.state, d: Math.round(Math.hypot(player.pos.x - n.x, player.pos.z - n.z)) })),
-    music: () => ({ on: musicOn, vol: +music.volume.toFixed(2), paused: music.paused, t: +music.currentTime.toFixed(1) }),
+    music: () => ({ on: musicOn, vol: +musicVol.toFixed(2), gain: music._gain ? +music._gain.gain.value.toFixed(2) : null, paused: music.paused, t: +music.currentTime.toFixed(1) }),
     drops: () => pickups.map((p) => p.kind + (p.kind === 'heart' ? ':' + (p.item ? p.item.id : 'HEART') : '')),
     food() { FOOD.forEach((f, i) => dropPickup('heart', player.pos.x - 1.6 + i * 1.6, player.pos.z - 5, f)); return !!pickMats.food; },
     tp(x, z, yaw = 0, pitch = -.1) { player.pos.set(x, H(x, z), z); player.yaw = yaw; player.pitch = pitch; },
@@ -2723,7 +2790,7 @@ if (/[?&]debug/.test(location.search)) {
     bossInfo: () => { const e = enemies.find((o) => o.boss); return e && { d: +Math.hypot(e.x - player.pos.x, e.z - player.pos.z).toFixed(1), hp: Math.round(e.hp), swing: +(e.swing || 0).toFixed(2), step: e.step, floor: Math.round(bossFloor(e)) }; },
     wave(n) { for (const e of enemies) { e.dead = true; removeEnemyObj(e); } enemies.length = 0; startWave(n); },
     types: () => enemies.map((e) => e.type),
-    screams: () => enemies.filter((e) => e.audio && e.audio._owner === e).map((e) => ({ paused: e.audio.paused, vol: +e.audio.volume.toFixed(2), ready: e.audio.readyState, t: +e.audio.currentTime.toFixed(2) })),
+    screams: () => enemies.filter((e) => e.audio && e.audio._owner === e).map((e) => ({ paused: e.audio.paused, vol: +(e.audio._vol || 0).toFixed(2), ready: e.audio.readyState, t: +e.audio.currentTime.toFixed(2) })),
     near(type) {   // подтянуть ближайшего врага типа type на 14 м перед игроком
       const e = enemies.find((o) => o.type === type); if (!e) return null;
       e.x = player.pos.x - Math.sin(player.yaw) * 14; e.z = player.pos.z - Math.cos(player.yaw) * 14;
