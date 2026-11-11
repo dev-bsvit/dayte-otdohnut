@@ -209,16 +209,33 @@ const Snd = (() => {
   function setVol(a, v) {
     v = clamp(v, 0, 1);
     a._vol = v;
-    if (VOL_OK) { a.volume = v; return; }
-    if (a.loop && a._unlocked) a.muted = v < .01;        // страховка: вне радиуса звук выключен в любом случае
-    if (a._gainFail) { a.muted = v < .12; return; }      // громкость не поменять совсем — хотя бы выключаем вдали
-    if (!ctx) return;
-    if (!a._gain) {
-      try { a._gain = ctx.createGain(); ctx.createMediaElementSource(a).connect(a._gain); a._gain.connect(ctx.destination); }
-      catch (e) { a._gain = null; a._gainFail = true; a.muted = v < .12; return; }
-    }
-    a._gain.gain.value = v;
+    if (VOL_OK) a.volume = v;                            // на iPhone громкость <audio> не меняется — играет как есть
   }
+  /* Музыка колонки на iPhone: трек декодируется и играет через Web Audio (BufferSource → Gain) —
+     единственный способ, при котором громкость там надёжно управляется. Файл — лёгкая моно-копия. */
+  const BG_SRC = 'assets/voice/animator-music-m.m4a';
+  const bg = { buf: null, src: null, gain: null, want: false, loading: false, vol: 0 };
+  function bgPlay() {
+    bg.want = true;
+    if (!ctx || muted || bg.src) return;
+    if (!bg.buf) {
+      if (bg.loading) return;
+      bg.loading = true;
+      fetch(BG_SRC).then((r) => r.arrayBuffer())
+        .then((data) => new Promise((res, rej) => ctx.decodeAudioData(data, res, rej)))
+        .then((buf) => { bg.buf = buf; if (bg.want) bgPlay(); })
+        .catch(() => { bg.loading = false; bg.failed = true; });
+      return;
+    }
+    if (!bg.gain) { bg.gain = ctx.createGain(); bg.gain.gain.value = bg.vol; bg.gain.connect(ctx.destination); }
+    bg.src = ctx.createBufferSource(); bg.src.buffer = bg.buf; bg.src.loop = true;
+    bg.src.connect(bg.gain); bg.src.start();
+  }
+  function bgStop() {
+    bg.want = false;
+    if (bg.src) { try { bg.src.stop(); } catch (e) {} bg.src.disconnect(); bg.src = null; }
+  }
+  function bgVol(v) { bg.vol = clamp(v, 0, 1); if (bg.gain) bg.gain.gain.value = bg.vol; }
   // звук идёт через Web Audio — он должен играть и при беззвучном режиме, и после сворачивания
   addEventListener('pointerdown', () => { if (ctx && ctx.state !== 'running') ctx.resume(); }, true);
   function unlock(a) {                 // iOS: первый play() должен быть по нажатию
@@ -285,6 +302,8 @@ const Snd = (() => {
     },
     screamVol(a, owner, v) { if (a && a._owner === owner) setVol(a, v * (voiceBusy ? .45 : 1)); },
     vol: setVol,
+    bufMusic: !VOL_OK, bgPlay, bgStop, bgVol,
+    bgInfo: () => ({ loaded: !!bg.buf, playing: !!bg.src, gain: bg.gain ? +bg.gain.gain.value.toFixed(3) : null, failed: !!bg.failed, ctx: ctx && ctx.state }),
     screamStop(a, owner) { if (a && a._owner === owner) { a.pause(); a._owner = null; } },
     screamStopAll() { for (const a of pool) { a.pause(); a._owner = null; } },
     shotgun() { noise(.5, 2600, 260, .9); tone('sine', 120, 38, .3, .9); },
@@ -2187,10 +2206,11 @@ const music = new Audio('assets/voice/animator-music.m4a');
 music.loop = true; music.preload = 'auto'; music.volume = 0;
 const MUSIC_RADIUS = 28, MUSIC_MAX = isTouch ? .32 : .45;   // на телефоне динамик один — музыка тише
 let musicOn = false, musicVol = 0;   // musicVol — текущая громкость колонки (саму её ставит Snd.vol)
-function musicPlay() { if (Snd.isMuted()) return; const p = music.play(); if (p && p.catch) p.catch(() => {}); musicOn = true; }
-function musicPause() { music.pause(); musicOn = false; }
+function musicPlay() { if (Snd.isMuted()) return; if (Snd.bufMusic) Snd.bgPlay(); else { const p = music.play(); if (p && p.catch) p.catch(() => {}); } musicOn = true; }
+function setMusicVol(v) { if (Snd.bufMusic) Snd.bgVol(v); else Snd.vol(music, v); }
+function musicPause() { if (Snd.bufMusic) Snd.bgStop(); music.pause(); musicOn = false; }
 function unlockMusic() {
-  if (music._unlocked) return;
+  if (music._unlocked || Snd.bufMusic) return;         // на iPhone музыка идёт не через <audio>
   music._unlocked = true; music.muted = true;
   Snd.vol(music, 0);
   const p = music.play();
@@ -2335,8 +2355,8 @@ function updateBeach(dt) {
       const vol = n.speaker ? MUSIC_MAX * Math.pow(clamp(1 - d / MUSIC_RADIUS, 0, 1), 1.6) : 0;
       const duck = voiceBusy ? .15 : 1;               // на время реплики музыку почти убираем
       musicVol += (vol * duck - musicVol) * Math.min(1, dt * 4);
-      Snd.vol(music, musicVol);
-      if (music.paused && state === 'playing' && !Snd.isMuted()) musicPlay();
+      setMusicVol(musicVol);
+      if ((Snd.bufMusic || music.paused) && state === 'playing' && !Snd.isMuted()) musicPlay();
     } else {
       // гости: фотограф и листовки
       if (n.state === 'come') {
@@ -2454,7 +2474,7 @@ function closeAd(ad) {
 }
 function clearBeach() {
   for (const n of npcs.slice()) removeNpc(n);
-  musicPause(); musicVol = 0; Snd.vol(music, 0);
+  musicPause(); musicVol = 0; setMusicVol(0);
   visitor.timer = 14; visitor.next = 'photo';
   adsEl.innerHTML = '';
   monkeyT = 0; monkeyEl.classList.remove('is-on');
@@ -2775,7 +2795,7 @@ if (/[?&]debug/.test(location.search)) {
     silent() { voice.muted = true; music.muted = true; },
     npc(kind) { let n = npcs.find((m) => m.kind === kind); if (!n) n = spawnNpc(kind); if (kind !== 'animator') { n.x = player.pos.x - Math.sin(player.yaw) * 8; n.z = player.pos.z - Math.cos(player.yaw) * 8; n.state = 'come'; } return n.kind; },
     npcInfo: () => npcs.map((n) => ({ kind: n.kind, state: n.state, d: Math.round(Math.hypot(player.pos.x - n.x, player.pos.z - n.z)) })),
-    music: () => ({ on: musicOn, vol: +musicVol.toFixed(2), gain: music._gain ? +music._gain.gain.value.toFixed(2) : null, paused: music.paused, t: +music.currentTime.toFixed(1) }),
+    music: () => ({ on: musicOn, vol: +musicVol.toFixed(2), bg: Snd.bgInfo(), paused: music.paused, t: +music.currentTime.toFixed(1) }),
     drops: () => pickups.map((p) => p.kind + (p.kind === 'heart' ? ':' + (p.item ? p.item.id : 'HEART') : '')),
     food() { FOOD.forEach((f, i) => dropPickup('heart', player.pos.x - 1.6 + i * 1.6, player.pos.z - 5, f)); return !!pickMats.food; },
     tp(x, z, yaw = 0, pitch = -.1) { player.pos.set(x, H(x, z), z); player.yaw = yaw; player.pitch = pitch; },
