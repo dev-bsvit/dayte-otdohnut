@@ -202,12 +202,15 @@ const Snd = (() => {
   /* Громкость файлов. iPhone не даёт странице менять volume у <audio> (там всегда 1),
      поэтому на нём звук идёт через GainNode. На компьютере — как раньше, через volume
      (так работает и при открытии с диска). ?gainvol — проверить «айфонный» путь на компьютере. */
-  const VOL_OK = (() => { try { const a = new Audio(); a.volume = .5; return a.volume === .5; } catch (e) { return true; } })()
+  // iPhone/iPad определяем по устройству: на новых iOS volume «запоминает» значение, но звук не меняется
+  const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Mac/.test(navigator.platform || '') && navigator.maxTouchPoints > 1);
+  const VOL_OK = !IOS && (() => { try { const a = new Audio(); a.volume = .5; return a.volume === .5; } catch (e) { return true; } })()
     && !/[?&]gainvol/.test(location.search);
   function setVol(a, v) {
     v = clamp(v, 0, 1);
     a._vol = v;
     if (VOL_OK) { a.volume = v; return; }
+    if (a.loop && a._unlocked) a.muted = v < .01;        // страховка: вне радиуса звук выключен в любом случае
     if (a._gainFail) { a.muted = v < .12; return; }      // громкость не поменять совсем — хотя бы выключаем вдали
     if (!ctx) return;
     if (!a._gain) {
