@@ -104,7 +104,8 @@ img { display: block; max-width: none; }
 
 /* ── Интерфейс ────────────────────────────────────────────── */
 
-.brand, .hud, .title, .lead, .start-wrap { z-index: 5; }
+.brand, .hud, .lead, .start-wrap { z-index: 5; }
+.title { z-index: 2; }   /* заголовок — за персонажем: герой перекрывает буквы */
 
 .brand { --x: 24; --y: 25; --w: 220.22; height: calc(35 * var(--u)); }
 .brand .in {
@@ -163,7 +164,7 @@ img { display: block; max-width: none; }
   line-height: .96;
 }
 .lead--1 { --x: 503; --y: 121; }
-.lead--2 { --x: 503; --y: 240.64; }
+.lead--2 { --x: 503; --y: 121; }
 
 /* кнопки «Начать» и «Правила» */
 .start-wrap { --x: 28; --y: 387; --w: 400; }
@@ -189,7 +190,7 @@ img { display: block; max-width: none; }
   -webkit-tap-highlight-color: transparent;
 }
 .btn--primary { background: #fff; color: #000; }
-.btn--ghost   { background: transparent; color: #fff; }
+.btn--ghost   { background: rgba(20, 30, 60, .22); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }   /* лёгкий блюр фона — надпись читается на любой картинке */
 .btn--primary:hover { background: var(--hud-text); border-color: var(--hud-text); box-shadow: 0 0 calc(24 * var(--u)) rgba(255, 184, 61, .5); }
 .btn--ghost:hover   { background: rgba(255, 255, 255, .16); }
 .btn:active { transform: translateY(calc(2 * var(--u))) scale(.98); }
