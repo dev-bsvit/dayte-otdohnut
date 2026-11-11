@@ -2204,7 +2204,7 @@ const CORN_CALLS = [LINES.cornCall, LINES.cornCall2, LINES.cornCall3, LINES.corn
 // музыка аниматора — ваш трек, громкость по расстоянию
 const music = new Audio('assets/voice/animator-music.m4a');
 music.loop = true; music.preload = 'auto'; music.volume = 0;
-const MUSIC_RADIUS = 28, MUSIC_MAX = isTouch ? .32 : .45;   // на телефоне динамик один — музыка тише
+const MUSIC_RADIUS = 40, MUSIC_MAX = .9, MUSIC_MIN = .05;   // радиус затухания, громкость у колонки и на краю карты
 let musicOn = false, musicVol = 0;   // musicVol — текущая громкость колонки (саму её ставит Snd.vol)
 function musicPlay() { if (Snd.isMuted()) return; if (Snd.bufMusic) Snd.bgPlay(); else { const p = music.play(); if (p && p.catch) p.catch(() => {}); } musicOn = true; }
 function setMusicVol(v) { if (Snd.bufMusic) Snd.bgVol(v); else Snd.vol(music, v); }
@@ -2351,9 +2351,9 @@ function updateBeach(dt) {
         roll = Math.sin(time * 4.2) * .035 * clamp(1.4 - d / 11, 0, 1);
         if (time - n.heroAt > 25 && time - n.saidAt > 1.5) { n.heroAt = time; say(LINES.animHero); }
       }
-      // громкость: слышно только возле пляжа (до MUSIC_RADIUS м), вплотную — MUSIC_MAX, дальше — тишина
-      const vol = n.speaker ? MUSIC_MAX * Math.pow(clamp(1 - d / MUSIC_RADIUS, 0, 1), 1.6) : 0;
-      const duck = voiceBusy ? .15 : 1;               // на время реплики музыку почти убираем
+      // громкость: у колонки 90%, в паре шагов (~8 м) 60%, дальше плавно до 5% — на краю карты еле слышно, но слышно
+      const vol = n.speaker ? MUSIC_MIN + (MUSIC_MAX - MUSIC_MIN) * Math.pow(clamp(1 - d / MUSIC_RADIUS, 0, 1), 2) : 0;
+      const duck = voiceBusy ? .2 : 1;                // на время реплики музыку приглушаем
       musicVol += (vol * duck - musicVol) * Math.min(1, dt * 4);
       setMusicVol(musicVol);
       if ((Snd.bufMusic || music.paused) && state === 'playing' && !Snd.isMuted()) musicPlay();
