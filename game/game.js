@@ -1589,7 +1589,7 @@ function resetGame() {
   player.yaw = 0; player.pitch = 0; player.hp = 100;
   ammo.shells = 50; ammo.bullets = 300;
   score = kills = wave = 0; time = 0;
-  cornHeroAt = speechFree = foodSaid = -99;   // таймеры реплик считаются от time — сбрасываем вместе с ним
+  cornHeroAt = speechFree = foodSaid = duckHold = -99;   // таймеры реплик считаются от time — сбрасываем вместе с ним
   tripLeft = TRIP_ITEMS.slice(); tripGot = 0;
   stopSpeech();
   resetPromoForm();
@@ -2204,7 +2204,10 @@ const CORN_CALLS = [LINES.cornCall, LINES.cornCall2, LINES.cornCall3, LINES.corn
 // музыка аниматора — ваш трек, громкость по расстоянию
 const music = new Audio('assets/voice/animator-music.m4a');
 music.loop = true; music.preload = 'auto'; music.volume = 0;
-const MUSIC_RADIUS = 40, MUSIC_MAX = .9, MUSIC_MIN = .05;   // радиус затухания, громкость у колонки и на краю карты
+const MUSIC_MAX = .9, MUSIC_MIN = .05;      // громкость вплотную к колонке и минимум на краю карты
+const MUSIC_REF = 4, MUSIC_ROLLOFF = .6;    // до 4 м громкость полная, дальше падает обратно расстоянию
+const MUSIC_DUCK = .4;                      // во сколько раз тише под реплики
+let musicDist = 0, musicDuck = 1, duckHold = -99;
 let musicOn = false, musicVol = 0;   // musicVol — текущая громкость колонки (саму её ставит Snd.vol)
 function musicPlay() { if (Snd.isMuted()) return; if (Snd.bufMusic) Snd.bgPlay(); else { const p = music.play(); if (p && p.catch) p.catch(() => {}); } musicOn = true; }
 function setMusicVol(v) { if (Snd.bufMusic) Snd.bgVol(v); else Snd.vol(music, v); }
@@ -2351,10 +2354,18 @@ function updateBeach(dt) {
         roll = Math.sin(time * 4.2) * .035 * clamp(1.4 - d / 11, 0, 1);
         if (time - n.heroAt > 25 && time - n.saidAt > 1.5) { n.heroAt = time; say(LINES.animHero); }
       }
-      // громкость: у колонки 90%, в паре шагов (~8 м) 60%, дальше плавно до 5% — на краю карты еле слышно, но слышно
-      const vol = n.speaker ? MUSIC_MIN + (MUSIC_MAX - MUSIC_MIN) * Math.pow(clamp(1 - d / MUSIC_RADIUS, 0, 1), 2) : 0;
-      const duck = voiceBusy ? .2 : 1;                // на время реплики музыку приглушаем
-      musicVol += (vol * duck - musicVol) * Math.min(1, dt * 4);
+      /* Громкость колонки — как в играх, из двух независимых плавных множителей:
+         1) расстояние: обратная зависимость (вдвое дальше — заметно тише), без ступенек и без «нуля»;
+         2) приглушение под реплики (ducking): быстро вниз, медленно обратно и с удержанием между репликами,
+            чтобы музыка не «качалась» на каждой фразе диалога. */
+      const far = Math.max(0, d - MUSIC_REF);
+      const distVol = n.speaker ? Math.max(MUSIC_MIN, MUSIC_MAX * MUSIC_REF / (MUSIC_REF + MUSIC_ROLLOFF * far)) : 0;
+      musicDist += (distVol - musicDist) * (1 - Math.exp(-dt / .4));          // сглаживание ~0,4 с
+      if (speechCur || speechScene || speechQ.length) duckHold = time;
+      const duckTo = time - duckHold < .9 ? MUSIC_DUCK : 1;                    // держим 0,9 с после последней реплики
+      musicDuck += (duckTo - musicDuck) * (1 - Math.exp(-dt / (duckTo < musicDuck ? .15 : 1.1)));
+      const base = Math.min(musicDist, MUSIC_MIN);                             // минимум под реплики не приглушаем — вдали музыка не пропадает
+      musicVol = base + (musicDist - base) * musicDuck;
       setMusicVol(musicVol);
       if ((Snd.bufMusic || music.paused) && state === 'playing' && !Snd.isMuted()) musicPlay();
     } else {
@@ -2474,7 +2485,7 @@ function closeAd(ad) {
 }
 function clearBeach() {
   for (const n of npcs.slice()) removeNpc(n);
-  musicPause(); musicVol = 0; setMusicVol(0);
+  musicPause(); musicVol = musicDist = 0; musicDuck = 1; duckHold = -99; setMusicVol(0);
   visitor.timer = 14; visitor.next = 'photo';
   adsEl.innerHTML = '';
   monkeyT = 0; monkeyEl.classList.remove('is-on');
