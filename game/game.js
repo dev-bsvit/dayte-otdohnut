@@ -208,10 +208,11 @@ const Snd = (() => {
     v = clamp(v, 0, 1);
     a._vol = v;
     if (VOL_OK) { a.volume = v; return; }
-    if (!ctx || a._gainFail) return;
+    if (a._gainFail) { a.muted = v < .12; return; }      // громкость не поменять совсем — хотя бы выключаем вдали
+    if (!ctx) return;
     if (!a._gain) {
       try { a._gain = ctx.createGain(); ctx.createMediaElementSource(a).connect(a._gain); a._gain.connect(ctx.destination); }
-      catch (e) { a._gain = null; a._gainFail = true; return; }
+      catch (e) { a._gain = null; a._gainFail = true; a.muted = v < .12; return; }
     }
     a._gain.gain.value = v;
   }
@@ -1066,7 +1067,7 @@ let state = 'loading';                     // loading | menu | playing | paused 
 let waveState = 'idle', waveT = 0, spawnT = 0, spawnQueue = [];
 let shake = 0, hurtA = 0, fireCd = 0, spin = 0, kick = 0, switchT = 0, pumpT = 0;
 let swayX = 0, swayY = 0, bobT = 0, firing = false, jumpReq = false;
-let autoFire = false, lookDragAt = -99;   // автоприцел на телефоне
+let autoFire = false, lookDragAt = -99, moveYawOff = 0;   // автоприцел на телефоне
 const enemies = [], pickups = [];
 let tripLeft = [], tripGot = 0;
 
@@ -1910,7 +1911,9 @@ function updatePickups(dt) {
     p.t += dt; p.life -= dt;
     const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz);
     const canTake = !(p.kind === 'heart' && player.hp >= 100);     // еду при полном здоровье не берём
-    if (canTake && d < 3.2) { p.x += dx / d * 14 * dt; p.z += dz / d * 14 * dt; }
+    // магнит: на телефоне тянет издалека и быстрее бега — автоприцел крутит камеру, точно подойти трудно
+    const pull = isTouch ? (p.kind === 'trip' ? 11 : 7) : 3.2;
+    if (canTake && d < pull && d > .01) { const sp = Math.min(isTouch ? 22 : 14, d / dt); p.x += dx / d * sp * dt; p.z += dz / d * sp * dt; }
     else if (!canTake && d < 1.8 && d > .01) { p.x -= dx / d * (1.8 - d); p.z -= dz / d * (1.8 - d); }   // не лезет в камеру
     p.s.position.set(p.x, H(p.x, p.z) + .45 + Math.sin(p.t * 3) * .15, p.z);
     if (p.kind === 'coin') p.s.scale.x = p.size * Math.max(.12, Math.abs(Math.cos(p.t * 3.5)));
@@ -2179,6 +2182,7 @@ const CORN_CALLS = [LINES.cornCall, LINES.cornCall2, LINES.cornCall3, LINES.corn
 // музыка аниматора — ваш трек, громкость по расстоянию
 const music = new Audio('assets/voice/animator-music.m4a');
 music.loop = true; music.preload = 'auto'; music.volume = 0;
+const MUSIC_RADIUS = 28, MUSIC_MAX = isTouch ? .32 : .45;   // на телефоне динамик один — музыка тише
 let musicOn = false, musicVol = 0;   // musicVol — текущая громкость колонки (саму её ставит Snd.vol)
 function musicPlay() { if (Snd.isMuted()) return; const p = music.play(); if (p && p.catch) p.catch(() => {}); musicOn = true; }
 function musicPause() { music.pause(); musicOn = false; }
@@ -2317,16 +2321,16 @@ function updateBeach(dt) {
       n.yaw = n.groundSpeaker ? toward : toward + Math.sin(n.t * 6) * .4;
       if (!n.speaker) {
         n.wait -= dt;
-        if (n.wait <= 0) { n.speaker = true; n.prop.hand.visible = true; if (d < 40) npcBark(n, LINES.animCall, 0); }
+        if (n.wait <= 0) { n.speaker = true; n.prop.hand.visible = true; if (d < 20) npcBark(n, LINES.animCall, 0); }
       }
-      if (n.speaker && d < 22) npcBark(n, LINES.animCall, 30);
+      if (n.speaker && d < 16) npcBark(n, LINES.animCall, 30);
       if (n.speaker && d < 11) {          // рядом с колонкой экран слегка качает в ритм (управление больше не путаем)
         roll = Math.sin(time * 4.2) * .035 * clamp(1.4 - d / 11, 0, 1);
         if (time - n.heroAt > 25 && time - n.saidAt > 1.5) { n.heroAt = time; say(LINES.animHero); }
       }
-      // громкость: рядом громко, далеко — тихо, но слышно
-      const vol = n.speaker ? .05 + .95 * Math.pow(clamp(1 - d / 55, 0, 1), 2) : 0;
-      const duck = voiceBusy ? .3 : 1;                // на время реплики музыку приглушаем
+      // громкость: слышно только возле пляжа (до MUSIC_RADIUS м), вплотную — MUSIC_MAX, дальше — тишина
+      const vol = n.speaker ? MUSIC_MAX * Math.pow(clamp(1 - d / MUSIC_RADIUS, 0, 1), 1.6) : 0;
+      const duck = voiceBusy ? .15 : 1;               // на время реплики музыку почти убираем
       musicVol += (vol * duck - musicVol) * Math.min(1, dt * 4);
       Snd.vol(music, musicVol);
       if (music.paused && state === 'playing' && !Snd.isMuted()) musicPlay();
@@ -2480,8 +2484,10 @@ function updatePlayer(dt) {
   let f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) + touchMove.y;
   if (invertControls) f = -f;                          // аниматор: вперёд-назад перепутались
   let s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + touchMove.x;
-  fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  right.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  if (!touchMove.len) moveYawOff = 0;                  // стик отпущен — «вперёд» снова туда, куда смотрим
+  const my = player.yaw + moveYawOff;                  // пока стик зажат, автоприцел не меняет направление бега
+  fwd.set(-Math.sin(my), 0, -Math.cos(my));
+  right.set(Math.cos(my), 0, -Math.sin(my));
   wish.set(0, 0, 0).addScaledVector(fwd, f).addScaledVector(right, s);
   if (wish.lengthSq() > 1) wish.normalize();
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchMove.len > .95;
@@ -2586,6 +2592,7 @@ function aimAssist(dt) {
     const rate = clamp(off * 8, .8, near ? 7 : 4) * (time - lookDragAt < .25 ? .35 : 1) * dt;
     const f = Math.min(1, rate / off);
     player.yaw += dyaw * f; player.pitch = clamp(player.pitch + dpitch * f, -1.45, 1.45);
+    if (touchMove.len) moveYawOff -= dyaw * f;         // герой бежит, куда бежал (например, к выпавшей вещи)
     setFwd();
   }
   ray.o.set(ex, ey, ez);
@@ -2754,6 +2761,8 @@ if (/[?&]debug/.test(location.search)) {
     fire(on = true) { firing = on; },
     weapon: (i) => selectWeapon(i),
     god() { player.hp = 1e9; },
+    stick(x, y) { touchMove.x = x; touchMove.y = y; touchMove.len = Math.min(1, Math.hypot(x, y)); },
+    pos: () => ({ x: +player.pos.x.toFixed(1), z: +player.pos.z.toFixed(1), yaw: +player.yaw.toFixed(2) }),
     ammo() { ammo.shells = 999; ammo.flamingo = 9999; for (const k in ammo) ammo[k] = 9999; },
     snd: () => Snd.debug(),
     voice: () => ({ cur: speechCur && speechCur.line, who: speechCur && speakerOf(speechCur), busy: voiceBusy, scene: speechScene && speechScene.lines.map((l) => l.line), queue: speechQ.map((q) => q.lines.map((l) => l.line).join(' → ')), missing: Object.keys(voiceOk).filter((k) => voiceOk[k] === false) }),
